@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  BUYER
+  SELLER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String?
+  email        String?   @unique
+  emailVerified DateTime?
+  passwordHash String?
+  avatarImageId String?  @unique
+  avatarImage  Image?    @relation(fields: [avatarImageId], references: [id])
+  bio          String?
+  role         Role      @default(BUYER)
+  createdAt    DateTime  @default(now())
+  listings     Listing[]
+  favorites    Favorite[]
+  // NextAuth relations
+  accounts     Account[]
+  sessions     Session[]
+}
+
+model Listing {
+  id          String     @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  currency    String     @default("INR")
+  category    String
+  city        String
+  lat         Float?
+  lng         Float?
+  isActive    Boolean    @default(true)
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id])
+  images      Image[]
+  favorites   Favorite[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Image {
+  id        String   @id @default(cuid())
+  filename  String
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+  listing   Listing? @relation(fields: [listingId], references: [id])
+  listingId String?
+  user      User?
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, listingId])
+}
+
+/*
+  NextAuth required models — keep these names exactly as below.
+  The @map attributes are optional but shown here in the canonical schema from NextAuth docs.
+*/
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? 
+  access_token       String? 
+  expires_at         Int? 
+  token_type         String? 
+  scope              String? 
+  id_token           String? 
+  session_state      String? 
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
