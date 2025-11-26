@@ -25,6 +25,8 @@ model User {
   createdAt    DateTime  @default(now())
   listings     Listing[]
   favorites    Favorite[]
+  conversationParticipants ConversationParticipant[]
+  sentMessages Message[]
   // NextAuth relations
   accounts     Account[]
   sessions     Session[]
@@ -47,8 +49,15 @@ model Listing {
   owner       User       @relation(fields: [ownerId], references: [id])
   images      Image[]
   favorites   Favorite[]
+  conversations Conversation[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  @@index([category])
+  @@index([city])
+  @@index([price])
+  @@index([createdAt])
+  @@index([ownerId])
 }
 
 model Image {
@@ -125,4 +134,41 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([tokenHash])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages  Message[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([listingId])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  text           String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
 }

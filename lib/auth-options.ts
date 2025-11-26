@@ -1,16 +1,15 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
       name: "credentials",
@@ -86,7 +85,7 @@ export const authOptions: NextAuthOptions = {
 
           if (!existingUser) {
             // Create new user for Google OAuth
-            await prisma.user.create({
+            const newUser = await prisma.user.create({
               data: {
                 email,
                 name: user.name,
@@ -94,6 +93,52 @@ export const authOptions: NextAuthOptions = {
                 role: "BUYER", // Default role for OAuth users
               },
             });
+            
+            // Link the account to the user
+            await prisma.account.create({
+              data: {
+                userId: newUser.id,
+                type: account.type,
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+                refresh_token: account.refresh_token,
+                access_token: account.access_token,
+                expires_at: account.expires_at,
+                token_type: account.token_type,
+                scope: account.scope,
+                id_token: account.id_token,
+                session_state: account.session_state as string | null,
+              },
+            });
+          } else {
+            // Check if account is already linked
+            const existingAccount = await prisma.account.findUnique({
+              where: {
+                provider_providerAccountId: {
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                },
+              },
+            });
+
+            // If account doesn't exist, link it
+            if (!existingAccount) {
+              await prisma.account.create({
+                data: {
+                  userId: existingUser.id,
+                  type: account.type,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                  refresh_token: account.refresh_token,
+                  access_token: account.access_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state as string | null,
+                },
+              });
+            }
           }
         } catch (error) {
           console.error("Error in Google OAuth:", error);
@@ -102,11 +147,20 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user }) {
-      // Add role to token when user signs in
+    async jwt({ token, user, account }) {
+      // Initial sign in - get user from database
       if (user) {
-        token.role = user.role;
         token.id = user.id;
+        token.role = user.role;
+      } else if (account?.provider === "google" && token.email) {
+        // For Google OAuth, fetch user from database if not in token
+        const dbUser = await prisma.user.findUnique({
+          where: { email: token.email },
+        });
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role;
+        }
       }
       return token;
     },
