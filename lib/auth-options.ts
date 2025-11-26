@@ -59,6 +59,49 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Handle Google OAuth
+      if (account?.provider === "google") {
+        try {
+          // Ensure email is verified by Google
+          const googleProfile = profile as { email_verified?: boolean; email?: string };
+          if (!googleProfile.email_verified) {
+            console.error("Google email not verified");
+            return false;
+          }
+
+          // Validate email domain (prevent fake emails)
+          const email = user.email!.toLowerCase();
+          const domain = email.split('@')[1];
+          const invalidDomains = ['example.com', 'test.com', 'localhost', 'temp.com', 'fake.com', 'domain.com'];
+          if (invalidDomains.includes(domain) || !domain.includes('.') || domain.endsWith('.local')) {
+            console.error("Invalid email domain:", domain);
+            return false;
+          }
+
+          // Check if user exists
+          const existingUser = await prisma.user.findUnique({
+            where: { email },
+          });
+
+          if (!existingUser) {
+            // Create new user for Google OAuth
+            await prisma.user.create({
+              data: {
+                email,
+                name: user.name,
+                image: user.image,
+                role: "BUYER", // Default role for OAuth users
+              },
+            });
+          }
+        } catch (error) {
+          console.error("Error in Google OAuth:", error);
+          return false;
+        }
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       // Add role to token when user signs in
       if (user) {

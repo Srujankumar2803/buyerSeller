@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
 import ListingCard from "@/components/ListingCard";
 import { Sparkles, TrendingUp, Shield } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   // Placeholder listing data - will be replaced with real data from API
@@ -108,13 +109,17 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-          <Button size="lg" className="rounded-full text-base px-8 py-6 shadow-lg hover:shadow-xl transition-all">
-            <TrendingUp className="mr-2 h-5 w-5" />
-            Browse Items
-          </Button>
-          <Button size="lg" variant="outline" className="rounded-full text-base px-8 py-6 hover:bg-primary hover:text-primary-foreground transition-all">
-            List an Item
-          </Button>
+          <Link href="http://localhost:3000/listings">
+            <Button size="lg" className="rounded-full text-base px-8 py-6 shadow-lg hover:shadow-xl transition-all">
+              <TrendingUp className="mr-2 h-5 w-5" />
+              Browse Items
+            </Button>
+          </Link>
+          <Link href="http://localhost:3000/listings/create">
+            <Button size="lg" variant="outline" className="rounded-full text-base px-8 py-6 hover:bg-primary hover:text-primary-foreground transition-all">
+              List an Item
+            </Button>
+          </Link>
         </div>
 
         {/* Trust Indicators */}

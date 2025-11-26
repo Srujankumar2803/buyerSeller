@@ -59,12 +59,23 @@ export default function Navbar() {
               <Bell className="h-5 w-5" />
             </Button>
             
-            <Button 
-              className="rounded-full px-4 sm:px-6 shadow-md hover:shadow-lg transition-all hidden sm:inline-flex"
-            >
-              <Package className="h-4 w-4 mr-2" />
-              Sell Item
-            </Button>
+            <Link href="/listings">
+              <Button 
+                variant="ghost"
+                className="rounded-full px-4 sm:px-6 hover:bg-accent transition-all hidden sm:inline-flex"
+              >
+                Browse Listings
+              </Button>
+            </Link>
+            
+            <Link href="http://localhost:3000/listings/create">
+              <Button 
+                className="rounded-full px-4 sm:px-6 shadow-md hover:shadow-lg transition-all hidden sm:inline-flex"
+              >
+                <Package className="h-4 w-4 mr-2" />
+                Sell Item
+              </Button>
+            </Link>
 
             {/* Auth Area */}
             {isLoggedIn ? (
@@ -96,10 +107,20 @@ export default function Navbar() {
                       Dashboard
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer rounded-xl">
-                    <Package className="mr-2 h-4 w-4" />
-                    My Listings
+                  <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
+                    <Link href="/listings" className="flex items-center">
+                      <Search className="mr-2 h-4 w-4" />
+                      Browse Listings
+                    </Link>
                   </DropdownMenuItem>
+                  {session?.user?.role === "SELLER" && (
+                    <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
+                      <Link href="http://localhost:3000/listings/create" className="flex items-center">
+                        <Package className="mr-2 h-4 w-4" />
+                        Create Listing
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem className="cursor-pointer rounded-xl">
                     <Settings className="mr-2 h-4 w-4" />
                     Settings

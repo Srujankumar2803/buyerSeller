@@ -28,6 +28,8 @@ model User {
   // NextAuth relations
   accounts     Account[]
   sessions     Session[]
+  // Password reset relation
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Listing {
@@ -110,4 +112,17 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
 }

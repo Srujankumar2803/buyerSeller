@@ -47,16 +47,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "Invalid email format" },
-        { status: 400 }
-      );
-    }
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return NextResponse.json(
+      { error: "Invalid email format" },
+      { status: 400 }
+    );
+  }
 
-    // Validate password length
+  // Validate email domain (prevent fake emails like test@example.com)
+  const domain = email.split('@')[1].toLowerCase();
+  const invalidDomains = ['example.com', 'test.com', 'localhost', 'temp.com', 'fake.com'];
+  if (invalidDomains.includes(domain)) {
+    return NextResponse.json(
+      { error: "Please use a valid email address from a real email provider (Gmail, Outlook, etc.)" },
+      { status: 400 }
+    );
+  }
+
+  // Check if domain has valid MX records (basic check)
+  if (!domain.includes('.') || domain.endsWith('.local')) {
+    return NextResponse.json(
+      { error: "Please use a valid email address from a real email provider" },
+      { status: 400 }
+    );
+  }    // Validate password length
     if (password.length < 6) {
       return NextResponse.json(
         { error: "Password must be at least 6 characters" },
