@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MapPin, Heart, MessageCircle, Star } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 interface ListingCardProps {
   id: string;
@@ -16,12 +18,14 @@ interface ListingCardProps {
   category: string;
   city: string;
   imageId?: string;
+  ownerId?: string;
   owner?: {
     name?: string;
     avatarImageId?: string;
   };
   isFavorited?: boolean;
   rating?: number;
+  onFavoriteChange?: () => void;
 }
 
 export default function ListingCard({
@@ -33,11 +37,95 @@ export default function ListingCard({
   category,
   city,
   imageId,
+  ownerId,
   owner,
   isFavorited = false,
   rating,
+  onFavoriteChange,
 }: ListingCardProps) {
+  const { data: session } = useSession();
   const [favorited, setFavorited] = useState(isFavorited);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
+  
+  // Check if current user is the owner of this listing
+  const isOwner = session?.user?.id === ownerId;
+
+  // Update favorited state when prop changes
+  useEffect(() => {
+    setFavorited(isFavorited);
+  }, [isFavorited]);
+
+  // Check if listing is favorited on mount
+  useEffect(() => {
+    if (!session?.user) return;
+
+    async function checkFavorite() {
+      try {
+        const response = await fetch("/api/favorites");
+        if (response.ok) {
+          const data = await response.json();
+          const favorite = data.favorites.find(
+            (fav: { listingId: string; id: string }) => fav.listingId === id
+          );
+          if (favorite) {
+            setFavorited(true);
+            setFavoriteId(favorite.id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check favorite status:", err);
+      }
+    }
+
+    checkFavorite();
+  }, [session, id]);
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!session?.user) {
+      // Could redirect to login or show a message
+      return;
+    }
+
+    setIsToggling(true);
+    try {
+      if (favorited && favoriteId) {
+        // Remove from favorites
+        const response = await fetch(`/api/favorites/${favoriteId}?listingId=${id}`, {
+          method: "DELETE",
+        });
+
+        if (response.ok) {
+          setFavorited(false);
+          setFavoriteId(null);
+          if (onFavoriteChange) onFavoriteChange();
+        }
+      } else {
+        // Add to favorites
+        const response = await fetch("/api/favorites", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ listingId: id }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setFavorited(true);
+          setFavoriteId(data.favorite.id);
+          if (onFavoriteChange) onFavoriteChange();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    } finally {
+      setIsToggling(false);
+    }
+  };
 
   const formatPrice = (price: number, currency: string) => {
     if (currency === "INR") {
@@ -47,9 +135,10 @@ export default function ListingCard({
   };
 
   return (
-    <Card className="rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group border-border/50 hover:border-primary/20">
-      {/* Image Area */}
-      <div className="relative h-48 sm:h-56 overflow-hidden bg-muted">
+    <Link href={`/listings/${id}`}>
+      <Card className="rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group border-border/50 hover:border-primary/20">
+        {/* Image Area */}
+        <div className="relative h-48 sm:h-56 overflow-hidden bg-muted">
         {imageId ? (
           <img 
             src={`/api/images/${imageId}`}
@@ -62,20 +151,20 @@ export default function ListingCard({
           </div>
         )}
         
-        {/* Favorite Button */}
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            setFavorited(!favorited);
-          }}
-          className="absolute top-3 right-3 bg-background/90 backdrop-blur-sm p-2.5 rounded-full hover:bg-background transition-all shadow-lg hover:scale-110"
-        >
-          <Heart 
-            className={`h-4 w-4 transition-all ${
-              favorited ? 'fill-red-500 text-red-500' : 'text-foreground'
-            }`}
-          />
-        </button>
+        {/* Favorite Button - Only show if logged in and not the owner */}
+        {session?.user && !isOwner && (
+          <button 
+            onClick={handleToggleFavorite}
+            disabled={isToggling}
+            className="absolute top-3 right-3 bg-background/90 backdrop-blur-sm p-2.5 rounded-full hover:bg-background transition-all shadow-lg hover:scale-110 disabled:opacity-50"
+          >
+            <Heart 
+              className={`h-4 w-4 transition-all ${
+                favorited ? 'fill-red-500 text-red-500' : 'text-foreground'
+              }`}
+            />
+          </button>
+        )}
         
         {/* Category Badge */}
         <Badge className="absolute bottom-3 left-3 rounded-full shadow-lg bg-background/90 backdrop-blur-sm text-foreground hover:bg-background">
@@ -143,5 +232,6 @@ export default function ListingCard({
         </div>
       </CardFooter>
     </Card>
+    </Link>
   );
 }

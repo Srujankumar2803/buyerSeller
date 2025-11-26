@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MapPin, Calendar, Edit, Trash2, ArrowLeft, User } from "lucide-react";
+import { Loader2, MapPin, Calendar, Edit, Trash2, ArrowLeft, User, Heart, MessageSquare } from "lucide-react";
 
 interface ListingImage {
   id: string;
@@ -47,6 +47,10 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
+  const [isContacting, setIsContacting] = useState(false);
 
   useEffect(() => {
     params.then(setResolvedParams);
@@ -74,6 +78,97 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
     fetchListing();
   }, [resolvedParams]);
+
+  // Check if listing is favorited
+  useEffect(() => {
+    if (!session?.user || !resolvedParams) return;
+
+    async function checkFavorite() {
+      try {
+        const response = await fetch("/api/favorites");
+        if (response.ok) {
+          const data = await response.json();
+          const favorite = data.favorites.find(
+            (fav: { listingId: string; id: string }) => fav.listingId === resolvedParams!.id
+          );
+          if (favorite) {
+            setIsFavorited(true);
+            setFavoriteId(favorite.id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check favorite status:", err);
+      }
+    }
+
+    checkFavorite();
+  }, [session, resolvedParams]);
+
+  const handleToggleFavorite = async () => {
+    if (!session?.user || !listing) return;
+
+    setIsToggling(true);
+    try {
+      if (isFavorited && favoriteId) {
+        // Remove from favorites
+        const response = await fetch(`/api/favorites/${favoriteId}?listingId=${listing.id}`, {
+          method: "DELETE",
+        });
+
+        if (response.ok) {
+          setIsFavorited(false);
+          setFavoriteId(null);
+        }
+      } else {
+        // Add to favorites
+        const response = await fetch("/api/favorites", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ listingId: listing.id }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setIsFavorited(true);
+          setFavoriteId(data.favorite.id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const handleContactSeller = async () => {
+    if (!session?.user || !listing) return;
+
+    setIsContacting(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create conversation");
+      }
+
+      // Redirect to the conversation
+      router.push(`/conversations/${data.conversation.id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to contact seller");
+    } finally {
+      setIsContacting(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!listing || !confirm("Are you sure you want to delete this listing?")) {
@@ -196,6 +291,23 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
                     )}
                   </div>
                 </div>
+                {!isOwner && session?.user && (
+                  <Button
+                    size="lg"
+                    variant={isFavorited ? "default" : "outline"}
+                    onClick={handleToggleFavorite}
+                    disabled={isToggling}
+                    className="rounded-full"
+                  >
+                    {isToggling ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Heart
+                        className={`h-5 w-5 ${isFavorited ? "fill-current" : ""}`}
+                      />
+                    )}
+                  </Button>
+                )}
               </div>
 
               <div className="text-3xl font-bold text-primary mb-6">
@@ -268,7 +380,17 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             )}
 
             {!isOwner && session && (
-              <Button className="w-full" size="lg">
+              <Button 
+                className="w-full" 
+                size="lg"
+                onClick={handleContactSeller}
+                disabled={isContacting}
+              >
+                {isContacting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                )}
                 Contact Seller
               </Button>
             )}

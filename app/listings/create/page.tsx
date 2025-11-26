@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,12 @@ export default function CreateListingPage() {
   });
 
   // Redirect if not logged in or not a seller
+  useEffect(() => {
+    if (status !== "loading" && !session) {
+      router.push("/login");
+    }
+  }, [status, session, router]);
+
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -37,7 +43,6 @@ export default function CreateListingPage() {
   }
 
   if (!session) {
-    router.push("/login");
     return null;
   }
 

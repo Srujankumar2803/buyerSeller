@@ -43,25 +43,38 @@ function getFieldValue(field: string | string[] | undefined): string {
 // GET /api/listings - List with filters and pagination
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "10");
+    const limit = parseInt(searchParams.get("limit") || "12");
     const page = parseInt(searchParams.get("page") || "1");
     const q = searchParams.get("q") || "";
     const category = searchParams.get("category") || "";
     const city = searchParams.get("city") || "";
+    const priceMin = searchParams.get("priceMin");
+    const priceMax = searchParams.get("priceMax");
+    const sortBy = searchParams.get("sort") || "newest";
+    const owner = searchParams.get("owner") || "";
 
     const skip = (page - 1) * limit;
 
     // Build where clause
     const where: {
       isActive: boolean;
+      ownerId?: string;
       OR?: Array<{ title?: { contains: string; mode: 'insensitive' }; description?: { contains: string; mode: 'insensitive' } }>;
       category?: string;
       city?: { contains: string; mode: 'insensitive' };
+      price?: { gte?: number; lte?: number };
     } = {
       isActive: true,
     };
 
+    // Filter by owner if requested
+    if (owner === "me" && session?.user?.id) {
+      where.ownerId = session.user.id;
+    }
+
+    // Search by title or description
     if (q) {
       where.OR = [
         { title: { contains: q, mode: "insensitive" } },
@@ -69,12 +82,33 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Filter by category
     if (category) {
       where.category = category;
     }
 
+    // Filter by city
     if (city) {
       where.city = { contains: city, mode: "insensitive" };
+    }
+
+    // Filter by price range
+    if (priceMin || priceMax) {
+      where.price = {};
+      if (priceMin) where.price.gte = parseFloat(priceMin);
+      if (priceMax) where.price.lte = parseFloat(priceMax);
+    }
+
+    // Determine sort order
+    let orderBy: Record<string, string> = { createdAt: "desc" };
+    if (sortBy === "price-asc") {
+      orderBy = { price: "asc" };
+    } else if (sortBy === "price-desc") {
+      orderBy = { price: "desc" };
+    } else if (sortBy === "newest") {
+      orderBy = { createdAt: "desc" };
+    } else if (sortBy === "oldest") {
+      orderBy = { createdAt: "asc" };
     }
 
     // Get total count for pagination
@@ -85,9 +119,7 @@ export async function GET(request: NextRequest) {
       where,
       skip,
       take: limit,
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy,
       include: {
         images: {
           select: {

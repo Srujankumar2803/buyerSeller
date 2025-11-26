@@ -13,11 +13,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Bell, User, LogOut, Settings, Package } from "lucide-react";
+import { Search, Bell, User, LogOut, Settings, Package, Heart, MessageSquare } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function Navbar() {
   const { data: session, status } = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
   const isLoggedIn = status === "authenticated" && session?.user;
+  
+  // Hide navbar on listings page
+  if (pathname === '/listings') {
+    return null;
+  }
 
   const handleSignOut = () => {
     signOut({ callbackUrl: "/" });
@@ -37,15 +45,15 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Search Bar - Pill Style */}
+          {/* Search Placeholder */}
           <div className="flex-1 max-w-2xl mx-4 sm:mx-8 hidden md:block">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <input
-                type="text"
-                placeholder="Search for items, categories, or locations..."
-                className="w-full pl-11 pr-4 py-2.5 rounded-full border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all hover:border-ring/50"
-              />
+              <div className="w-full pl-11 pr-4 py-2.5 rounded-full border border-input bg-muted/30 text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 transition-all flex items-center"
+                onClick={() => router.push('/listings')}
+              >
+                Search your item here...
+              </div>
             </div>
           </div>
 
@@ -61,21 +69,24 @@ export default function Navbar() {
             
             <Link href="/listings">
               <Button 
-                variant="ghost"
-                className="rounded-full px-4 sm:px-6 hover:bg-accent transition-all hidden sm:inline-flex"
+                variant="default"
+                size="lg"
+                className="rounded-full px-6 sm:px-8 text-base font-semibold transition-all shadow-md hover:shadow-lg"
               >
                 Browse Listings
               </Button>
             </Link>
             
-            <Link href="http://localhost:3000/listings/create">
-              <Button 
-                className="rounded-full px-4 sm:px-6 shadow-md hover:shadow-lg transition-all hidden sm:inline-flex"
-              >
-                <Package className="h-4 w-4 mr-2" />
-                Sell Item
-              </Button>
-            </Link>
+            {session?.user?.role === "SELLER" && (
+              <Link href="/listings/create">
+                <Button 
+                  className="rounded-full px-4 sm:px-6 shadow-md hover:shadow-lg transition-all hidden sm:inline-flex"
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  Sell Item
+                </Button>
+              </Link>
+            )}
 
             {/* Auth Area */}
             {isLoggedIn ? (
@@ -113,9 +124,21 @@ export default function Navbar() {
                       Browse Listings
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
+                    <Link href="/conversations" className="flex items-center">
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Messages
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
+                    <Link href="/favorites" className="flex items-center">
+                      <Heart className="mr-2 h-4 w-4" />
+                      Favorites
+                    </Link>
+                  </DropdownMenuItem>
                   {session?.user?.role === "SELLER" && (
                     <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
-                      <Link href="http://localhost:3000/listings/create" className="flex items-center">
+                      <Link href="/listings/create" className="flex items-center">
                         <Package className="mr-2 h-4 w-4" />
                         Create Listing
                       </Link>
