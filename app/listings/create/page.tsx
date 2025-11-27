@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function CreateListingPage() {
   const router = useRouter();
@@ -126,7 +127,7 @@ export default function CreateListingPage() {
       }
 
       // Success - show toast and redirect
-      alert("Listing created successfully!");
+      toast.success("Listing created successfully!");
       router.push(`/listings/${result.listing.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");

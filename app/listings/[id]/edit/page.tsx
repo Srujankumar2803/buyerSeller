@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, X, Save } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface ListingImage {
   id: string;
@@ -186,7 +187,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         throw new Error(result.error || "Failed to update listing");
       }
 
-      alert("Listing updated successfully!");
+      toast.success("Listing updated successfully!");
       router.push(`/listings/${listing.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");

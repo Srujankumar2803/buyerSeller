@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, MapPin, Calendar, Edit, Trash2, ArrowLeft, User, Heart, MessageSquare } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface ListingImage {
   id: string;
@@ -164,7 +165,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       // Redirect to the conversation
       router.push(`/conversations/${data.conversation.id}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to contact seller");
+      toast.error(err instanceof Error ? err.message : "Failed to contact seller");
     } finally {
       setIsContacting(false);
     }
@@ -188,10 +189,10 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         throw new Error(data.error || "Failed to delete listing");
       }
 
-      alert("Listing deleted successfully!");
+      toast.success("Listing deleted successfully!");
       router.push("/dashboard");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete listing");
+      toast.error(err instanceof Error ? err.message : "Failed to delete listing");
     } finally {
       setIsDeleting(false);
     }
