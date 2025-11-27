@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
       : [];
 
     // Create listing with images in a transaction
-    const listing = await prisma.$transaction(async (tx: typeof prisma) => {
+    const listing = await prisma.$transaction(async (tx) => {
       // Create the listing
       const newListing = await tx.listing.create({
         data: {

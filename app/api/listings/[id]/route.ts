@@ -118,7 +118,7 @@ export async function PUT(
     if (isActive !== undefined) updateData.isActive = isActive;
 
     // Update listing and delete specified images in transaction
-    const listing = await prisma.$transaction(async (tx: typeof prisma) => {
+    const listing = await prisma.$transaction(async (tx) => {
       // Delete specified images
       if (deleteImageIds && Array.isArray(deleteImageIds) && deleteImageIds.length > 0) {
         await tx.image.deleteMany({

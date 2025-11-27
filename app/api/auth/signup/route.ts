@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
         data: {
           filename: avatarFile.filename,
           mime: avatarFile.mime,
-          data: avatarFile.data,
+          data: Buffer.from(avatarFile.data),
         },
       });
       avatarImageId = image.id;

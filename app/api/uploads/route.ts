@@ -93,7 +93,6 @@ export async function POST(request: NextRequest) {
           mime: typedFile.mimetype || 'application/octet-stream',
           data: fileData,
           listingId: listingId as string | undefined,
-          userId: userId as string | undefined,
         },
       });
 
