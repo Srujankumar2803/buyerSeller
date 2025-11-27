@@ -220,8 +220,14 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       }
 
       // Initialize Razorpay checkout
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      
+      if (!razorpayKey) {
+        throw new Error("Razorpay key is not configured");
+      }
+
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+        key: razorpayKey,
         amount: data.razorpayOrder.amount,
         currency: data.razorpayOrder.currency,
         name: "Neighbourhood Marketplace",
