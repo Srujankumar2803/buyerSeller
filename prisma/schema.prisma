@@ -17,6 +17,7 @@ model User {
   name         String?
   email        String?   @unique
   emailVerified DateTime?
+  image        String?
   passwordHash String?
   avatarImageId String?  @unique
   avatarImage  Image?    @relation(fields: [avatarImageId], references: [id])
@@ -171,4 +172,23 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  buyerId           String
+  sellerId          String
+  listingId         String
+  amount            Int      // stored in paise (smallest currency unit)
+  currency          String   @default("INR")
+  status            String   @default("created") // created, paid, failed
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([razorpayOrderId])
 }

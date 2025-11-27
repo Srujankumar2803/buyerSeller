@@ -165,10 +165,23 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      // Add role and id to session from token
+      // Add role, id, and image to session from token
       if (session.user && token) {
         session.user.id = token.id as string;
         session.user.role = token.role as "BUYER" | "SELLER";
+        
+        // Fetch user image from database
+        if (token.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email },
+            select: { image: true, avatarImageId: true },
+          });
+          if (dbUser?.image) {
+            session.user.image = dbUser.image;
+          } else if (dbUser?.avatarImageId) {
+            session.user.image = `/api/images/${dbUser.avatarImageId}`;
+          }
+        }
       }
       return session;
     },

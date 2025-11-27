@@ -162,11 +162,16 @@ export default function ListingsPage() {
       params.delete("page");
       
       const newUrl = params.toString() ? `/listings?${params}` : '/listings';
-      router.push(newUrl);
+      
+      // Only update URL if it's actually different to prevent unnecessary navigation
+      const currentUrl = window.location.pathname + window.location.search;
+      if (newUrl !== currentUrl) {
+        router.push(newUrl);
+      }
     }, 500); // 500ms debounce delay
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, category, city, priceMin, priceMax, sortBy, router, searchParams]);
+  }, [searchQuery, category, city, priceMin, priceMax, sortBy, router]);
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams.toString());
