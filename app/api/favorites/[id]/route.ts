@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 // DELETE /api/favorites/[id] - Remove favorite by id or listingId
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,7 +18,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const listingId = searchParams.get("listingId");
 

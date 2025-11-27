@@ -52,6 +52,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [favoriteId, setFavoriteId] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
   const [isContacting, setIsContacting] = useState(false);
+  const [isBuying, setIsBuying] = useState(false);
 
   useEffect(() => {
     params.then(setResolvedParams);
@@ -195,6 +196,84 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       toast.error(err instanceof Error ? err.message : "Failed to delete listing");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleBuyNow = async () => {
+    if (!session?.user || !listing) return;
+
+    setIsBuying(true);
+    try {
+      // Create order
+      const response = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create order");
+      }
+
+      // Initialize Razorpay checkout
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+        amount: data.razorpayOrder.amount,
+        currency: data.razorpayOrder.currency,
+        name: "Neighbourhood Marketplace",
+        description: data.listing.title,
+        order_id: data.razorpayOrder.id,
+        handler: async function (response: any) {
+          try {
+            // Verify payment
+            const verifyResponse = await fetch("/api/orders/verify", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                orderId: data.order.id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyResponse.json();
+
+            if (!verifyResponse.ok) {
+              throw new Error(verifyData.error || "Payment verification failed");
+            }
+
+            toast.success("Payment successful! 🎉");
+            router.push("/dashboard");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Payment verification failed");
+          }
+        },
+        prefill: {
+          name: session.user.name || "",
+          email: session.user.email || "",
+        },
+        theme: {
+          color: "#3B82F6",
+        },
+        modal: {
+          ondismiss: function () {
+            setIsBuying(false);
+          },
+        },
+      };
+
+      const razorpay = new (window as any).Razorpay(options);
+      razorpay.open();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
+      setIsBuying(false);
     }
   };
 
@@ -381,19 +460,35 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             )}
 
             {!isOwner && session && (
-              <Button 
-                className="w-full" 
-                size="lg"
-                onClick={handleContactSeller}
-                disabled={isContacting}
-              >
-                {isContacting ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                )}
-                Contact Seller
-              </Button>
+              <div className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  size="lg"
+                  onClick={handleBuyNow}
+                  disabled={isBuying}
+                >
+                  {isBuying ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <>💳</>
+                  )}
+                  Buy Now - ₹{listing.price.toLocaleString()}
+                </Button>
+                <Button 
+                  className="w-full" 
+                  size="lg"
+                  variant="outline"
+                  onClick={handleContactSeller}
+                  disabled={isContacting}
+                >
+                  {isContacting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                  )}
+                  Contact Seller
+                </Button>
+              </div>
             )}
           </div>
         </div>
