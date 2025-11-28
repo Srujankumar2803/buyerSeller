@@ -222,38 +222,88 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       // Show UPI payment options
       const paymentInfo = data.paymentInfo;
       
-      // Better UPI URL format for better compatibility
-      const upiUrl = `upi://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&tr=${paymentInfo.orderId}&am=${paymentInfo.amount}&cu=INR`;
+      // Create proper UPI URL for real payment
+      const upiUrl = `upi://pay?pa=${paymentInfo.merchantUpiId}&pn=Neighbourhood%20Marketplace&am=${paymentInfo.amount}&cu=INR&tr=${paymentInfo.orderId}&tn=Payment%20for%20${encodeURIComponent(data.listing.title)}`;
       
       console.log("UPI URL:", upiUrl);
       console.log("Payment Info:", paymentInfo);
       
-      // Open UPI payment directly
-      const openUpiPayment = () => {
-        try {
-          // Try to open UPI app directly
-          window.location.href = upiUrl;
+      // Create payment modal with UPI options
+      const paymentModal = document.createElement('div');
+      paymentModal.id = 'upi-payment-modal';
+      paymentModal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0,0,0,0.8); z-index: 1000; 
+        display: flex; align-items: center; justify-content: center;
+      `;
+      
+      paymentModal.innerHTML = `
+        <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
+          <h3 style="margin: 0 0 16px 0; color: #333;">Pay ₹${paymentInfo.amount}</h3>
+          <p style="margin: 0 0 16px 0; color: #666;">for ${data.listing.title}</p>
           
-          // Fallback: show manual payment instructions
-          setTimeout(() => {
-            const shouldConfirm = confirm(
-              `Payment Details:\n\nUPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nFor: ${data.listing.title}\n\nDid you complete the payment?`
-            );
+          <div style="margin: 20px 0; padding: 16px; background: #f0f8ff; border-radius: 8px;">
+            <p style="font-weight: bold; margin: 0 0 8px 0;">UPI ID: ${paymentInfo.merchantUpiId}</p>
+            <p style="font-size: 14px; color: #666; margin: 0;">Choose your UPI app to pay:</p>
+          </div>
+          
+          <div style="margin: 20px 0;">
+            <button id="phonepe-btn" style="background: #5f259f; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
+              📱 Pay with PhonePe
+            </button>
             
-            if (shouldConfirm) {
-              confirmPayment();
-            } else {
-              setIsBuying(false);
-            }
-          }, 2000); // Wait 2 seconds for UPI app to open
+            <button id="gpay-btn" style="background: #4285f4; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
+              💳 Pay with Google Pay
+            </button>
+            
+            <button id="paytm-btn" style="background: #002970; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
+              💰 Pay with Paytm
+            </button>
+            
+            <button id="any-upi-btn" style="background: #00bcd4; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px; font-size: 16px;">
+              🔄 Open Any UPI App
+            </button>
+          </div>
+          
+          <div style="margin: 16px 0; border-top: 1px solid #eee; padding-top: 16px;">
+            <button id="confirm-payment-btn" style="background: #ff9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
+              ✅ I Have Completed Payment
+            </button>
+          </div>
+          
+          <button id="cancel-payment-btn" style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+            Cancel
+          </button>
+        </div>
+      `;
+      
+      // Open UPI payment function
+      const openUpiApp = (appIntent = '') => {
+        try {
+          let finalUrl = upiUrl;
+          
+          // Try app-specific intents first, then fallback to generic UPI
+          if (appIntent === 'phonepe') {
+            finalUrl = `phonepe://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+          } else if (appIntent === 'googlepay') {
+            finalUrl = `tez://upi/pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+          } else if (appIntent === 'paytm') {
+            finalUrl = `paytmmp://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+          }
+          
+          console.log("Opening UPI app with URL:", finalUrl);
+          
+          // Try to open the UPI app
+          const link = document.createElement('a');
+          link.href = finalUrl;
+          link.click();
+          
+          // Also try window.location as backup
+          window.location.href = finalUrl;
           
         } catch (error) {
-          console.error("UPI payment error:", error);
-          toast.error("Could not open UPI app. Please pay manually.");
-          
-          // Show manual payment instructions
-          alert(`Manual Payment:\n\nUPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nNote: ${data.listing.title}`);
-          setIsBuying(false);
+          console.error("Failed to open UPI app:", error);
+          toast.error("Could not open UPI app. Try another payment method.");
         }
       };
       
@@ -277,6 +327,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
           }
 
           toast.success("Payment submitted! Seller will verify and confirm. 📱");
+          document.body.removeChild(paymentModal);
           router.push("/dashboard");
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to submit payment");
@@ -285,8 +336,26 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         }
       };
       
-      // Start payment process
-      openUpiPayment();
+      // Add event listeners to buttons
+      const phonePeBtn = paymentModal.querySelector('#phonepe-btn');
+      const gpayBtn = paymentModal.querySelector('#gpay-btn');
+      const paytmBtn = paymentModal.querySelector('#paytm-btn');
+      const anyUpiBtn = paymentModal.querySelector('#any-upi-btn');
+      const confirmBtn = paymentModal.querySelector('#confirm-payment-btn');
+      const cancelBtn = paymentModal.querySelector('#cancel-payment-btn');
+      
+      phonePeBtn?.addEventListener('click', () => openUpiApp('phonepe'));
+      gpayBtn?.addEventListener('click', () => openUpiApp('googlepay'));
+      paytmBtn?.addEventListener('click', () => openUpiApp('paytm'));
+      anyUpiBtn?.addEventListener('click', () => openUpiApp(''));
+      confirmBtn?.addEventListener('click', confirmPayment);
+      cancelBtn?.addEventListener('click', () => {
+        document.body.removeChild(paymentModal);
+        setIsBuying(false);
+      });
+      
+      // Show the payment modal
+      document.body.appendChild(paymentModal);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsBuying(false);
