@@ -222,11 +222,15 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       // Show UPI payment options
       const paymentInfo = data.paymentInfo;
       
+      // Detect if user is on mobile
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
       // Create proper UPI URL for real payment
       const upiUrl = `upi://pay?pa=${paymentInfo.merchantUpiId}&pn=Neighbourhood%20Marketplace&am=${paymentInfo.amount}&cu=INR&tr=${paymentInfo.orderId}&tn=Payment%20for%20${encodeURIComponent(data.listing.title)}`;
       
       console.log("UPI URL:", upiUrl);
       console.log("Payment Info:", paymentInfo);
+      console.log("Device:", isMobile ? "Mobile" : "Desktop");
       
       // Create payment modal with UPI options
       const paymentModal = document.createElement('div');
@@ -237,6 +241,10 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         display: flex; align-items: center; justify-content: center;
       `;
       
+      const deviceInfo = isMobile ? 
+        `<p style="font-size: 14px; color: #4caf50; margin: 0;">📱 Mobile detected - UPI apps will open automatically</p>` :
+        `<p style="font-size: 14px; color: #ff9800; margin: 0;">💻 Desktop detected - Use mobile for direct UPI app access</p>`;
+
       paymentModal.innerHTML = `
         <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
           <h3 style="margin: 0 0 16px 0; color: #333;">Pay ₹${paymentInfo.amount}</h3>
@@ -244,9 +252,10 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
           
           <div style="margin: 20px 0; padding: 16px; background: #f0f8ff; border-radius: 8px;">
             <p style="font-weight: bold; margin: 0 0 8px 0;">UPI ID: ${paymentInfo.merchantUpiId}</p>
-            <p style="font-size: 14px; color: #666; margin: 0;">Choose your UPI app to pay:</p>
+            ${deviceInfo}
           </div>
           
+          ${isMobile ? `
           <div style="margin: 20px 0;">
             <button id="phonepe-btn" style="background: #5f259f; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
               📱 Pay with PhonePe
@@ -264,6 +273,19 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               🔄 Open Any UPI App
             </button>
           </div>
+          ` : `
+          <div style="margin: 20px 0; padding: 16px; background: #fff3e0; border-radius: 8px; text-align: left;">
+            <p style="font-size: 14px; margin: 0 0 8px 0; font-weight: bold;">For UPI Payment:</p>
+            <p style="font-size: 12px; margin: 0 0 4px 0;">1. Open any UPI app on your mobile</p>
+            <p style="font-size: 12px; margin: 0 0 4px 0;">2. Send money to: <strong>${paymentInfo.merchantUpiId}</strong></p>
+            <p style="font-size: 12px; margin: 0 0 4px 0;">3. Amount: <strong>₹${paymentInfo.amount}</strong></p>
+            <p style="font-size: 12px; margin: 0;">4. Add note: <em>${data.listing.title}</em></p>
+          </div>
+          
+          <button id="copy-upi-btn" style="background: #2196f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
+            📋 Copy UPI ID
+          </button>
+          `}
           
           <div style="margin: 16px 0; border-top: 1px solid #eee; padding-top: 16px;">
             <button id="confirm-payment-btn" style="background: #ff9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
@@ -281,30 +303,66 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       const openUpiApp = (appIntent = '') => {
         try {
           let finalUrl = upiUrl;
+          let appName = "UPI App";
           
-          // Try app-specific intents first, then fallback to generic UPI
+          // Create app-specific URLs
           if (appIntent === 'phonepe') {
             finalUrl = `phonepe://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+            appName = "PhonePe";
           } else if (appIntent === 'googlepay') {
             finalUrl = `tez://upi/pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+            appName = "Google Pay";
           } else if (appIntent === 'paytm') {
             finalUrl = `paytmmp://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&am=${paymentInfo.amount}&tr=${paymentInfo.orderId}&tn=${encodeURIComponent(data.listing.title)}`;
+            appName = "Paytm";
           }
           
-          console.log("Opening UPI app with URL:", finalUrl);
+          console.log("Device:", isMobile ? "Mobile" : "Desktop");
+          console.log("Opening", appName, "with URL:", finalUrl);
           
-          // Try to open the UPI app
-          const link = document.createElement('a');
-          link.href = finalUrl;
-          link.click();
-          
-          // Also try window.location as backup
-          window.location.href = finalUrl;
+          if (isMobile) {
+            // On mobile - try to open UPI app
+            window.location.href = finalUrl;
+            
+            // Show fallback after 3 seconds if app doesn't open
+            setTimeout(() => {
+              const fallbackMsg = `If ${appName} didn't open:\n\n1. Copy this UPI ID: ${paymentInfo.merchantUpiId}\n2. Open any UPI app manually\n3. Send ₹${paymentInfo.amount}\n4. Use note: ${data.listing.title}`;
+              
+              if (confirm(fallbackMsg + "\n\nDid you complete the payment?")) {
+                confirmPayment();
+              }
+            }, 3000);
+            
+          } else {
+            // On desktop - show QR code and manual instructions
+            showDesktopPayment();
+          }
           
         } catch (error) {
           console.error("Failed to open UPI app:", error);
-          toast.error("Could not open UPI app. Try another payment method.");
+          toast.error("Could not open UPI app. Showing manual payment details.");
+          showDesktopPayment();
         }
+      };
+      
+      // Show desktop payment instructions
+      const showDesktopPayment = () => {
+        const instructions = `
+MOBILE PAYMENT REQUIRED
+
+To complete payment:
+
+1. Open this page on your mobile phone
+2. OR manually pay using any UPI app:
+
+UPI ID: ${paymentInfo.merchantUpiId}
+Amount: ₹${paymentInfo.amount}
+Note: ${data.listing.title}
+
+3. After payment, click "I Have Completed Payment"
+        `;
+        
+        alert(instructions);
       };
       
       // Confirm payment function
@@ -341,13 +399,26 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       const gpayBtn = paymentModal.querySelector('#gpay-btn');
       const paytmBtn = paymentModal.querySelector('#paytm-btn');
       const anyUpiBtn = paymentModal.querySelector('#any-upi-btn');
+      const copyUpiBtn = paymentModal.querySelector('#copy-upi-btn');
       const confirmBtn = paymentModal.querySelector('#confirm-payment-btn');
       const cancelBtn = paymentModal.querySelector('#cancel-payment-btn');
       
+      // Mobile UPI app buttons
       phonePeBtn?.addEventListener('click', () => openUpiApp('phonepe'));
       gpayBtn?.addEventListener('click', () => openUpiApp('googlepay'));
       paytmBtn?.addEventListener('click', () => openUpiApp('paytm'));
       anyUpiBtn?.addEventListener('click', () => openUpiApp(''));
+      
+      // Desktop copy UPI ID button
+      copyUpiBtn?.addEventListener('click', () => {
+        navigator.clipboard.writeText(paymentInfo.merchantUpiId).then(() => {
+          toast.success('UPI ID copied! Open any UPI app to pay.');
+        }).catch(() => {
+          prompt('Copy this UPI ID:', paymentInfo.merchantUpiId);
+        });
+      });
+      
+      // Common buttons
       confirmBtn?.addEventListener('click', confirmPayment);
       cancelBtn?.addEventListener('click', () => {
         document.body.removeChild(paymentModal);
