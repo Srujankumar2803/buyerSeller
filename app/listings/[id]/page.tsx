@@ -384,8 +384,13 @@ Note: ${data.listing.title}
       let paymentCheckInterval: NodeJS.Timeout | null = null;
       
       const startPaymentVerification = () => {
+        let checkCount = 0;
+        const maxChecks = 120; // 10 minutes (120 checks * 5 seconds)
+        
         // Check payment status every 5 seconds
         paymentCheckInterval = setInterval(async () => {
+          checkCount++;
+          
           try {
             const response = await fetch(`/api/orders/status?orderId=${data.order.id}`);
             const statusData = await response.json();
@@ -393,19 +398,57 @@ Note: ${data.listing.title}
             if (statusData.success && statusData.order.status === "completed") {
               // Payment confirmed!
               clearInterval(paymentCheckInterval!);
-              showPaymentSuccess();
+              
+              // Show background notification if modal is not visible
+              const isModalVisible = document.body.contains(paymentModal);
+              
+              if (!isModalVisible) {
+                // Show background success notification
+                toast.success("🎉 Payment received! Your purchase is complete!", {
+                  duration: 8000,
+                  style: {
+                    background: '#4CAF50',
+                    color: 'white',
+                    fontWeight: 'bold',
+                  },
+                });
+                
+                // Show browser notification if permission granted
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  new Notification('Payment Successful! 🎉', {
+                    body: `Your payment for "${data.listing.title}" has been confirmed!`,
+                    icon: '/favicon.ico'
+                  });
+                }
+                
+                // Redirect to purchases page after 3 seconds
+                setTimeout(() => {
+                  if (window.confirm('Payment confirmed! Would you like to view your purchases?')) {
+                    router.push('/purchases');
+                  }
+                }, 3000);
+              } else {
+                // Show success modal as usual
+                showPaymentSuccess();
+              }
+            } else if (checkCount >= maxChecks) {
+              // Stop checking after max attempts
+              clearInterval(paymentCheckInterval!);
+              toast.error("Payment detection timeout. Please check manually in My Purchases.");
             }
           } catch (error) {
             console.log("Payment status check failed:", error);
           }
         }, 5000);
         
-        // Stop checking after 10 minutes
-        setTimeout(() => {
-          if (paymentCheckInterval) {
-            clearInterval(paymentCheckInterval);
-          }
-        }, 600000);
+        // Request notification permission for background updates
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+              toast.success("📱 Notifications enabled! We'll alert you when payment is received.");
+            }
+          });
+        }
       };
       
       const showPaymentSuccess = () => {
@@ -487,6 +530,14 @@ Note: ${data.listing.title}
       // Confirm payment function (when user clicks "I completed payment")
       const confirmPayment = async () => {
         try {
+          // Show immediate feedback
+          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
+          if (confirmBtn) {
+            confirmBtn.textContent = "🔄 Processing...";
+            confirmBtn.style.background = "#2196F3";
+            confirmBtn.disabled = true;
+          }
+
           const verifyResponse = await fetch("/api/orders/status", {
             method: "POST",
             headers: {
@@ -503,21 +554,57 @@ Note: ${data.listing.title}
             throw new Error(verifyData.error || "Payment confirmation failed");
           }
 
-          toast.success("Payment confirmation received! Waiting for verification... 📱");
+          // Show success message with auto-close notification
+          toast.success("✅ Payment confirmed! We'll automatically detect when it's received.");
+          
+          // Update UI to show waiting state with countdown
+          if (confirmBtn) {
+            confirmBtn.textContent = "⏳ Waiting for payment detection...";
+            confirmBtn.style.background = "#FF9800";
+            
+            // Add message about auto-close
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+              margin-top: 12px; padding: 12px; background: #e3f2fd; 
+              border: 1px solid #2196f3; border-radius: 6px; font-size: 14px;
+              text-align: center; color: #1976d2;
+            `;
+            messageDiv.innerHTML = `
+              💡 <strong>Great!</strong> This window will automatically close when your payment is detected.<br>
+              <small>You can also close it manually - we'll keep checking in the background.</small>
+            `;
+            
+            confirmBtn.parentNode?.insertBefore(messageDiv, confirmBtn.nextSibling);
+            
+            // Add auto-close button
+            const autoCloseBtn = document.createElement('button');
+            autoCloseBtn.style.cssText = `
+              margin-top: 8px; background: #4caf50; color: white; border: none; 
+              padding: 8px 16px; border-radius: 6px; cursor: pointer; width: 100%;
+              font-size: 14px;
+            `;
+            autoCloseBtn.textContent = "✨ Close & Auto-Detect Payment";
+            autoCloseBtn.onclick = () => {
+              toast.success("🎯 Payment detection continues in background! You'll be notified when received.");
+              document.body.removeChild(paymentModal);
+            };
+            
+            messageDiv.appendChild(autoCloseBtn);
+          }
           
           // Start checking for payment verification
           startPaymentVerification();
           
-          // Update UI to show waiting state
-          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
-          if (confirmBtn) {
-            confirmBtn.textContent = "⏳ Waiting for verification...";
-            confirmBtn.style.background = "#FF9800";
-            confirmBtn.disabled = true;
-          }
-          
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to confirm payment");
+          
+          // Reset button on error
+          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
+          if (confirmBtn) {
+            confirmBtn.textContent = "✅ I Have Completed Payment";
+            confirmBtn.style.background = "#ff9800";
+            confirmBtn.disabled = false;
+          }
         }
       };
       
@@ -644,8 +731,44 @@ Note: ${data.listing.title}
       // Common buttons
       confirmBtn?.addEventListener('click', confirmPayment);
       cancelBtn?.addEventListener('click', () => {
-        document.body.removeChild(paymentModal);
-        setIsBuying(false);
+        // Stop payment verification if running
+        if (paymentCheckInterval) {
+          clearInterval(paymentCheckInterval);
+          paymentCheckInterval = null;
+        }
+        
+        // Ask user if they want to continue monitoring in background
+        const continueMonitoring = window.confirm(
+          "Cancel payment?\n\n" +
+          "Choose 'OK' to stop monitoring completely, or\n" +
+          "Choose 'Cancel' to close this window but keep monitoring for payment in the background."
+        );
+        
+        if (continueMonitoring) {
+          // User wants to stop completely
+          document.body.removeChild(paymentModal);
+          setIsBuying(false);
+          toast.error("Payment cancelled");
+        } else {
+          // User wants to continue monitoring in background
+          document.body.removeChild(paymentModal);
+          setIsBuying(false);
+          
+          // Check if user confirmed payment before closing
+          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
+          if (confirmBtn?.textContent?.includes('Waiting')) {
+            // Payment was confirmed, continue monitoring
+            toast.success("💡 Payment monitoring continues in background. We'll notify you when received!");
+            startPaymentVerification(); // Restart monitoring
+          } else {
+            toast("Payment window closed. You can try again anytime.", {
+              style: {
+                background: '#2196F3',
+                color: 'white',
+              },
+            });
+          }
+        }
       });
       
       // Auto-generate QR code for desktop users immediately
