@@ -131,6 +131,12 @@ export default function Navbar() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
+                    <Link href="/purchases" className="flex items-center">
+                      <Package className="mr-2 h-4 w-4" />
+                      My Purchases
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-xl" asChild>
                     <Link href="/favorites" className="flex items-center">
                       <Heart className="mr-2 h-4 w-4" />
                       Favorites

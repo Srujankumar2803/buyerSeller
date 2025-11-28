@@ -380,10 +380,114 @@ Note: ${data.listing.title}
         alert(instructions);
       };
       
-      // Confirm payment function
+      // Payment verification polling
+      let paymentCheckInterval: NodeJS.Timeout | null = null;
+      
+      const startPaymentVerification = () => {
+        // Check payment status every 5 seconds
+        paymentCheckInterval = setInterval(async () => {
+          try {
+            const response = await fetch(`/api/orders/status?orderId=${data.order.id}`);
+            const statusData = await response.json();
+            
+            if (statusData.success && statusData.order.status === "completed") {
+              // Payment confirmed!
+              clearInterval(paymentCheckInterval!);
+              showPaymentSuccess();
+            }
+          } catch (error) {
+            console.log("Payment status check failed:", error);
+          }
+        }, 5000);
+        
+        // Stop checking after 10 minutes
+        setTimeout(() => {
+          if (paymentCheckInterval) {
+            clearInterval(paymentCheckInterval);
+          }
+        }, 600000);
+      };
+      
+      const showPaymentSuccess = () => {
+        // Remove payment modal
+        if (document.body.contains(paymentModal)) {
+          document.body.removeChild(paymentModal);
+        }
+        
+        // Show success modal
+        const successModal = document.createElement('div');
+        successModal.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(0, 0, 0, 0.7); display: flex; align-items: center;
+          justify-content: center; z-index: 10000; padding: 20px;
+        `;
+        
+        successModal.innerHTML = `
+          <div style="background: white; border-radius: 12px; padding: 32px; max-width: 400px; width: 100%; text-align: center; animation: fadeInScale 0.3s ease-out;">
+            <div style="width: 80px; height: 80px; background: #4CAF50; border-radius: 50%; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
+              <span style="font-size: 40px;">✅</span>
+            </div>
+            <h2 style="margin: 0 0 16px 0; color: #2E7D32; font-size: 24px;">Payment Successful!</h2>
+            <p style="margin: 0 0 24px 0; color: #666; font-size: 16px; line-height: 1.5;">
+              Your payment has been confirmed! The item "${data.listing.title}" is now yours.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+              <button id="view-purchases-btn" style="background: #2196F3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                View My Purchases
+              </button>
+              <button id="close-success-btn" style="background: #f5f5f5; color: #333; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                Close
+              </button>
+            </div>
+          </div>
+          
+          <style>
+            @keyframes fadeInScale {
+              from { opacity: 0; transform: scale(0.8); }
+              to { opacity: 1; transform: scale(1); }
+            }
+          </style>
+        `;
+        
+        document.body.appendChild(successModal);
+        
+        // Add event listeners
+        const viewPurchasesBtn = successModal.querySelector('#view-purchases-btn');
+        const closeBtn = successModal.querySelector('#close-success-btn');
+        
+        viewPurchasesBtn?.addEventListener('click', () => {
+          document.body.removeChild(successModal);
+          router.push('/purchases');
+        });
+        
+        closeBtn?.addEventListener('click', () => {
+          document.body.removeChild(successModal);
+          router.push('/');
+        });
+        
+        // Auto close after 30 seconds
+        setTimeout(() => {
+          if (document.body.contains(successModal)) {
+            document.body.removeChild(successModal);
+          }
+        }, 30000);
+        
+        // Success sound/haptic feedback (if supported)
+        try {
+          if ('vibrate' in navigator) {
+            navigator.vibrate([100, 50, 100]);
+          }
+        } catch {
+          // Ignore vibration errors
+        }
+        
+        toast.success("🎉 Payment confirmed! Item purchased successfully!");
+      };
+
+      // Confirm payment function (when user clicks "I completed payment")
       const confirmPayment = async () => {
         try {
-          const verifyResponse = await fetch("/api/orders/verify", {
+          const verifyResponse = await fetch("/api/orders/status", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -396,16 +500,24 @@ Note: ${data.listing.title}
           const verifyData = await verifyResponse.json();
 
           if (!verifyResponse.ok) {
-            throw new Error(verifyData.error || "Payment verification failed");
+            throw new Error(verifyData.error || "Payment confirmation failed");
           }
 
-          toast.success("Payment submitted! Seller will verify and confirm. 📱");
-          document.body.removeChild(paymentModal);
-          router.push("/dashboard");
+          toast.success("Payment confirmation received! Waiting for verification... 📱");
+          
+          // Start checking for payment verification
+          startPaymentVerification();
+          
+          // Update UI to show waiting state
+          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
+          if (confirmBtn) {
+            confirmBtn.textContent = "⏳ Waiting for verification...";
+            confirmBtn.style.background = "#FF9800";
+            confirmBtn.disabled = true;
+          }
+          
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Failed to submit payment");
-        } finally {
-          setIsBuying(false);
+          toast.error(error instanceof Error ? error.message : "Failed to confirm payment");
         }
       };
       
