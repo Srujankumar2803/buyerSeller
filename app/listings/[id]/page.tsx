@@ -222,49 +222,43 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       // Show UPI payment options
       const paymentInfo = data.paymentInfo;
       
-      // Create payment modal content
-      const paymentModal = document.createElement('div');
-      paymentModal.innerHTML = `
-        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-          <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
-            <h3 style="margin: 0 0 16px 0; color: #333;">Pay ₹${paymentInfo.amount}</h3>
-            <p style="margin: 0 0 16px 0; color: #666;">for ${data.listing.title}</p>
-            
-            <div style="margin: 20px 0;">
-              <p style="font-weight: bold; margin-bottom: 8px;">UPI ID: ${paymentInfo.merchantUpiId}</p>
-              <p style="font-size: 12px; color: #888;">Pay using any UPI app (PhonePe, Google Pay, Paytm, etc.)</p>
-            </div>
-            
-            <div style="margin: 20px 0;">
-              <button onclick="window.open('${paymentInfo.upiUrl}', '_blank')" 
-                style="background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
-                Pay with UPI App
-              </button>
-              
-              <button onclick="navigator.share ? navigator.share({text: '${paymentInfo.upiUrl}'}) : navigator.clipboard.writeText('${paymentInfo.upiUrl}').then(() => alert('UPI URL copied!'))"
-                style="background: #2196F3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
-                Copy UPI Link
-              </button>
-            </div>
-            
-            <div style="margin: 20px 0; border-top: 1px solid #eee; padding-top: 16px;">
-              <p style="font-size: 12px; color: #666; margin-bottom: 12px;">After payment, click confirm:</p>
-              <button id="confirmPaymentBtn" 
-                style="background: #FF9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
-                I Have Made Payment
-              </button>
-            </div>
-            
-            <button onclick="document.body.removeChild(this.parentElement.parentElement)" 
-              style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
-              Cancel
-            </button>
-          </div>
-        </div>
-      `;
+      // Better UPI URL format for better compatibility
+      const upiUrl = `upi://pay?pa=${paymentInfo.merchantUpiId}&pn=Marketplace&tr=${paymentInfo.orderId}&am=${paymentInfo.amount}&cu=INR`;
       
-      // Add event listener for confirm button
-      paymentModal.querySelector('#confirmPaymentBtn')?.addEventListener('click', async () => {
+      console.log("UPI URL:", upiUrl);
+      console.log("Payment Info:", paymentInfo);
+      
+      // Open UPI payment directly
+      const openUpiPayment = () => {
+        try {
+          // Try to open UPI app directly
+          window.location.href = upiUrl;
+          
+          // Fallback: show manual payment instructions
+          setTimeout(() => {
+            const shouldConfirm = confirm(
+              `Payment Details:\n\nUPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nFor: ${data.listing.title}\n\nDid you complete the payment?`
+            );
+            
+            if (shouldConfirm) {
+              confirmPayment();
+            } else {
+              setIsBuying(false);
+            }
+          }, 2000); // Wait 2 seconds for UPI app to open
+          
+        } catch (error) {
+          console.error("UPI payment error:", error);
+          toast.error("Could not open UPI app. Please pay manually.");
+          
+          // Show manual payment instructions
+          alert(`Manual Payment:\n\nUPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nNote: ${data.listing.title}`);
+          setIsBuying(false);
+        }
+      };
+      
+      // Confirm payment function
+      const confirmPayment = async () => {
         try {
           const verifyResponse = await fetch("/api/orders/verify", {
             method: "POST",
@@ -283,15 +277,16 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
           }
 
           toast.success("Payment submitted! Seller will verify and confirm. 📱");
-          document.body.removeChild(paymentModal);
           router.push("/dashboard");
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to submit payment");
+        } finally {
+          setIsBuying(false);
         }
-      });
+      };
       
-      // Show the modal
-      document.body.appendChild(paymentModal);
+      // Start payment process
+      openUpiPayment();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsBuying(false);
