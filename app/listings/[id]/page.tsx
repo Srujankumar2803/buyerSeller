@@ -255,8 +255,8 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             ${deviceInfo}
           </div>
           
-          ${isMobile ? `
           <div style="margin: 20px 0;">
+            ${isMobile ? `
             <button id="phonepe-btn" style="background: #5f259f; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
               📱 Pay with PhonePe
             </button>
@@ -272,20 +272,28 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             <button id="any-upi-btn" style="background: #00bcd4; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px; font-size: 16px;">
               🔄 Open Any UPI App
             </button>
+            ` : ''}
+            
+            <!-- Universal UPI Payment Button (Works on Desktop + Mobile) -->
+            <button id="upi-payment-btn" style="background: linear-gradient(45deg, #ff6b6b, #4ecdc4); color: white; border: none; padding: 15px 24px; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 12px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+              💰 Pay ₹${paymentInfo.amount} via UPI
+            </button>
+            
+            <!-- QR Code for Desktop Users -->
+            ${!isMobile ? `
+            <div id="qr-container" style="margin: 16px 0; padding: 16px; background: #f8f9fa; border-radius: 8px; text-align: center;">
+              <p style="font-size: 14px; margin: 0 0 12px 0; font-weight: bold;">Scan QR Code with any UPI App:</p>
+              <div id="qr-code-placeholder" style="width: 200px; height: 200px; margin: 0 auto; background: white; border: 2px dashed #ddd; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666;">
+                QR Code will appear here
+              </div>
+              <p style="font-size: 12px; margin: 12px 0 0 0; color: #666;">Or use UPI ID: <strong>${paymentInfo.merchantUpiId}</strong></p>
+            </div>
+            
+            <button id="copy-upi-btn" style="background: #2196f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
+              📋 Copy UPI ID & Amount
+            </button>
+            ` : ''}
           </div>
-          ` : `
-          <div style="margin: 20px 0; padding: 16px; background: #fff3e0; border-radius: 8px; text-align: left;">
-            <p style="font-size: 14px; margin: 0 0 8px 0; font-weight: bold;">For UPI Payment:</p>
-            <p style="font-size: 12px; margin: 0 0 4px 0;">1. Open any UPI app on your mobile</p>
-            <p style="font-size: 12px; margin: 0 0 4px 0;">2. Send money to: <strong>${paymentInfo.merchantUpiId}</strong></p>
-            <p style="font-size: 12px; margin: 0 0 4px 0;">3. Amount: <strong>₹${paymentInfo.amount}</strong></p>
-            <p style="font-size: 12px; margin: 0;">4. Add note: <em>${data.listing.title}</em></p>
-          </div>
-          
-          <button id="copy-upi-btn" style="background: #2196f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
-            📋 Copy UPI ID
-          </button>
-          `}
           
           <div style="margin: 16px 0; border-top: 1px solid #eee; padding-top: 16px;">
             <button id="confirm-payment-btn" style="background: #ff9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
@@ -394,11 +402,50 @@ Note: ${data.listing.title}
         }
       };
       
+      // Generate UPI QR Code for desktop users
+      const generateQRCode = () => {
+        const qrContainer = paymentModal.querySelector('#qr-code-placeholder');
+        if (qrContainer) {
+          // Create QR code using QR.js (we'll use a simple approach)
+          const qrData = upiUrl;
+          const qrSize = 200;
+          
+          // Use Google Charts API to generate QR code (free and works instantly)
+          const qrCodeUrl = `https://chart.googleapis.com/chart?chs=${qrSize}x${qrSize}&cht=qr&chl=${encodeURIComponent(qrData)}&choe=UTF-8`;
+          
+          qrContainer.innerHTML = `<img src="${qrCodeUrl}" alt="UPI QR Code" style="width: 100%; height: 100%; object-fit: contain;" />`;
+        }
+      };
+      
+      // Universal UPI payment function
+      const makeUpiPayment = () => {
+        if (isMobile) {
+          // On mobile - try to open UPI app
+          openUpiApp('');
+        } else {
+          // On desktop - show QR code and try to open UPI link
+          generateQRCode();
+          
+          // Also try to trigger UPI app on desktop (some systems support it)
+          try {
+            window.open(upiUrl, '_blank');
+          } catch {
+            console.log('Desktop UPI link failed, QR code available');
+          }
+          
+          // Show instructions
+          setTimeout(() => {
+            toast.success('QR code generated! Scan with any UPI app or use the UPI ID manually.');
+          }, 500);
+        }
+      };
+      
       // Add event listeners to buttons
       const phonePeBtn = paymentModal.querySelector('#phonepe-btn');
       const gpayBtn = paymentModal.querySelector('#gpay-btn');
       const paytmBtn = paymentModal.querySelector('#paytm-btn');
       const anyUpiBtn = paymentModal.querySelector('#any-upi-btn');
+      const upiPaymentBtn = paymentModal.querySelector('#upi-payment-btn');
       const copyUpiBtn = paymentModal.querySelector('#copy-upi-btn');
       const confirmBtn = paymentModal.querySelector('#confirm-payment-btn');
       const cancelBtn = paymentModal.querySelector('#cancel-payment-btn');
@@ -409,12 +456,16 @@ Note: ${data.listing.title}
       paytmBtn?.addEventListener('click', () => openUpiApp('paytm'));
       anyUpiBtn?.addEventListener('click', () => openUpiApp(''));
       
-      // Desktop copy UPI ID button
+      // Universal UPI payment button (works on both mobile and desktop)
+      upiPaymentBtn?.addEventListener('click', makeUpiPayment);
+      
+      // Desktop copy UPI details button
       copyUpiBtn?.addEventListener('click', () => {
-        navigator.clipboard.writeText(paymentInfo.merchantUpiId).then(() => {
-          toast.success('UPI ID copied! Open any UPI app to pay.');
+        const paymentText = `UPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nNote: ${data.listing.title}`;
+        navigator.clipboard.writeText(paymentText).then(() => {
+          toast.success('Payment details copied! Open any UPI app to pay.');
         }).catch(() => {
-          prompt('Copy this UPI ID:', paymentInfo.merchantUpiId);
+          prompt('Copy payment details:', paymentText);
         });
       });
       
@@ -424,6 +475,13 @@ Note: ${data.listing.title}
         document.body.removeChild(paymentModal);
         setIsBuying(false);
       });
+      
+      // Auto-generate QR code for desktop users
+      if (!isMobile) {
+        setTimeout(() => {
+          generateQRCode();
+        }, 100);
+      }
       
       // Show the payment modal
       document.body.appendChild(paymentModal);
