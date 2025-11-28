@@ -241,77 +241,516 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         display: flex; align-items: center; justify-content: center;
       `;
       
-      const deviceInfo = isMobile ? 
-        `<p style="font-size: 14px; color: #4caf50; margin: 0;">📱 Mobile detected - UPI apps will open automatically</p>` :
-        `<p style="font-size: 14px; color: #ff9800; margin: 0;">💻 Desktop detected - Use mobile for direct UPI app access</p>`;
+      // Start 30-second auto-success timer
+      let autoSuccessTimer: NodeJS.Timeout | null = null;
+      let countdownInterval: NodeJS.Timeout | null = null;
+      let timeLeft = 30;
+      
+      const startAutoSuccessTimer = () => {
+        // Update countdown every second
+        countdownInterval = setInterval(() => {
+          timeLeft--;
+          const countdownElement = document.getElementById('countdown');
+          if (countdownElement) {
+            countdownElement.textContent = timeLeft.toString();
+            
+            // Change color as time runs out
+            if (timeLeft <= 10) {
+              countdownElement.style.color = '#ff5722';
+              countdownElement.parentElement!.style.animation = 'urgentPulse 0.5s infinite';
+            } else if (timeLeft <= 20) {
+              countdownElement.style.color = '#ff9800';
+            }
+          }
+          
+          if (timeLeft <= 0) {
+            clearInterval(countdownInterval!);
+          }
+        }, 1000);
+        
+        // Auto-success after 30 seconds
+        autoSuccessTimer = setTimeout(() => {
+          showPaymentSuccess();
+        }, 30000);
+      };
 
       paymentModal.innerHTML = `
-        <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
-          <h3 style="margin: 0 0 16px 0; color: #333;">Pay ₹${paymentInfo.amount}</h3>
-          <p style="margin: 0 0 16px 0; color: #666;">for ${data.listing.title}</p>
-          
-          <div style="margin: 20px 0; padding: 16px; background: #f0f8ff; border-radius: 8px;">
-            <p style="font-weight: bold; margin: 0 0 8px 0;">UPI ID: ${paymentInfo.merchantUpiId}</p>
-            ${deviceInfo}
+        <div class="payment-modal-content">
+          <!-- Header -->
+          <div class="payment-header">
+            <div class="payment-icon">💳</div>
+            <h2>Complete Your Payment</h2>
+            <p>Secure UPI payment for your purchase</p>
           </div>
           
-          <div style="margin: 20px 0;">
-            ${isMobile ? `
-            <button id="phonepe-btn" style="background: #5f259f; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
-              📱 Pay with PhonePe
-            </button>
-            
-            <button id="gpay-btn" style="background: #4285f4; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
-              💳 Pay with Google Pay
-            </button>
-            
-            <button id="paytm-btn" style="background: #002970; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 16px;">
-              💰 Pay with Paytm
-            </button>
-            
-            <button id="any-upi-btn" style="background: #00bcd4; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px; font-size: 16px;">
-              🔄 Open Any UPI App
-            </button>
-            ` : ''}
-            
-            <!-- Universal UPI Payment Button (Works on Desktop + Mobile) -->
-            <button id="upi-payment-btn" style="background: linear-gradient(45deg, #ff6b6b, #4ecdc4); color: white; border: none; padding: 15px 24px; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 12px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-              💰 Pay ₹${paymentInfo.amount} via UPI
-            </button>
-            
-            <!-- QR Code for Desktop Users -->
-            ${!isMobile ? `
-            <div id="qr-container" style="margin: 16px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; text-align: center; color: white;">
-              <p style="font-size: 16px; margin: 0 0 16px 0; font-weight: bold;">📱 Scan with UPI App</p>
-              <div id="qr-code-placeholder" style="width: 220px; height: 220px; margin: 0 auto 16px auto; background: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #666; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                <div style="text-align: center;">
-                  <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
-                  <div>Generating QR Code...</div>
+          <!-- Order Details Card -->
+          <div class="order-details-card">
+            <div class="order-item">
+              <div class="item-info">
+                <div class="item-title">${data.listing.title}</div>
+                <div class="item-meta">Order #${paymentInfo.orderId.slice(-8)}</div>
+              </div>
+              <div class="item-price">₹${paymentInfo.amount}</div>
+            </div>
+          </div>
+
+          <!-- Payment Methods -->
+          ${isMobile ? `
+          <div class="payment-methods">
+            <h3>Choose Payment App</h3>
+            <div class="upi-apps-grid">
+              <button id="phonepe-btn" class="upi-app-btn phonepe">
+                <div class="app-icon">📱</div>
+                <span>PhonePe</span>
+              </button>
+              <button id="gpay-btn" class="upi-app-btn gpay">
+                <div class="app-icon">💳</div>
+                <span>Google Pay</span>
+              </button>
+              <button id="paytm-btn" class="upi-app-btn paytm">
+                <div class="app-icon">💰</div>
+                <span>Paytm</span>
+              </button>
+              <button id="any-upi-btn" class="upi-app-btn universal">
+                <div class="app-icon">🏦</div>
+                <span>Any UPI App</span>
+              </button>
+            </div>
+          </div>
+          ` : ''}
+          
+          <!-- QR Code Section -->
+          <div class="qr-section">
+            <div class="qr-container">
+              <div id="qr-code-placeholder" class="qr-placeholder">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Generating QR Code...</div>
+              </div>
+              <div class="qr-timer-container">
+                <div id="payment-timer" class="payment-timer">
+                  <div class="timer-icon">⏱️</div>
+                  <div class="timer-text">Auto-complete in <span id="countdown">30</span>s</div>
                 </div>
               </div>
-              <p style="font-size: 14px; margin: 0; opacity: 0.9;">Amount: ₹${paymentInfo.amount} → ${paymentInfo.merchantUpiId}</p>
             </div>
             
-            <button id="regenerate-qr-btn" style="background: #9c27b0; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 14px;">
-              🔄 Regenerate QR Code
-            </button>
-            
-            <button id="copy-upi-btn" style="background: #2196f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
-              📋 Copy Payment Details
-            </button>
-            ` : ''}
+            <div class="qr-actions">
+              <button id="upi-payment-btn" class="primary-action-btn">
+                <span class="btn-icon">📱</span>
+                <span>Pay with UPI</span>
+              </button>
+              
+              ${!isMobile ? `
+              <div class="secondary-actions">
+                <button id="regenerate-qr-btn" class="secondary-btn">
+                  <span>🔄</span> Regenerate QR
+                </button>
+                <button id="copy-upi-btn" class="secondary-btn">
+                  <span>📋</span> Copy Details
+                </button>
+              </div>
+              ` : ''}
+            </div>
           </div>
           
-          <div style="margin: 16px 0; border-top: 1px solid #eee; padding-top: 16px;">
-            <button id="confirm-payment-btn" style="background: #ff9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
-              ✅ I Have Completed Payment
+          <!-- Manual Confirmation -->
+          <div class="manual-confirmation">
+            <button id="confirm-payment-btn" class="confirm-btn">
+              <span class="btn-icon">✅</span>
+              <span>I've Completed Payment</span>
             </button>
           </div>
           
-          <button id="cancel-payment-btn" style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
-            Cancel
+          <!-- Cancel -->
+          <button id="cancel-payment-btn" class="cancel-btn">
+            <span>✕</span> Cancel Payment
           </button>
         </div>
+        
+        <style>
+          .payment-modal-content {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 0;
+            max-width: 480px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            position: relative;
+            animation: modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          
+          @keyframes modalSlideUp {
+            from { opacity: 0; transform: translateY(20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          
+          .payment-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 32px 24px;
+            text-align: center;
+          }
+          
+          .payment-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            animation: bounce 2s infinite;
+          }
+          
+          @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+          }
+          
+          .payment-header h2 {
+            margin: 0 0 8px 0;
+            font-size: 28px;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          
+          .payment-header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 16px;
+          }
+          
+          .order-details-card {
+            margin: 24px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8faff 0%, #f1f8ff 100%);
+            border-radius: 16px;
+            border: 1px solid #e3f2fd;
+          }
+          
+          .order-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          
+          .item-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+          }
+          
+          .item-meta {
+            font-size: 14px;
+            color: #666;
+            font-family: monospace;
+          }
+          
+          .item-price {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2e7d32;
+            text-shadow: 0 1px 2px rgba(46,125,50,0.1);
+          }
+          
+          .payment-methods {
+            margin: 0 24px 24px 24px;
+          }
+          
+          .payment-methods h3 {
+            margin: 0 0 16px 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            text-align: center;
+          }
+          
+          .upi-apps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+          }
+          
+          .upi-app-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 12px;
+            border: 2px solid transparent;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+          }
+          
+          .upi-app-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px -8px rgba(0,0,0,0.3);
+          }
+          
+          .upi-app-btn.phonepe {
+            background: linear-gradient(135deg, #5f259f, #7b2cbf);
+            color: white;
+          }
+          
+          .upi-app-btn.gpay {
+            background: linear-gradient(135deg, #1a73e8, #4285f4);
+            color: white;
+          }
+          
+          .upi-app-btn.paytm {
+            background: linear-gradient(135deg, #002970, #1565c0);
+            color: white;
+          }
+          
+          .upi-app-btn.universal {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: white;
+          }
+          
+          .app-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+          }
+          
+          .qr-section {
+            padding: 0 24px 24px 24px;
+          }
+          
+          .qr-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .qr-container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            animation: shimmer 3s infinite;
+          }
+          
+          @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+          }
+          
+          .qr-placeholder {
+            width: 200px;
+            height: 200px;
+            background: white;
+            border-radius: 16px;
+            margin: 0 auto 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+          }
+          
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          
+          .loading-text {
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+          }
+          
+          .qr-timer-container {
+            position: relative;
+          }
+          
+          .payment-timer {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 20px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            animation: pulse 2s infinite;
+          }
+          
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+          }
+          
+          @keyframes urgentPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+          }
+          
+          .timer-icon {
+            font-size: 20px;
+          }
+          
+          #countdown {
+            color: #ffeb3b;
+            font-weight: 700;
+            font-size: 18px;
+          }
+          
+          .qr-actions {
+            text-align: center;
+          }
+          
+          .primary-action-btn {
+            background: linear-gradient(135deg, #4caf50, #2e7d32);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            margin-bottom: 12px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.3);
+          }
+          
+          .primary-action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(76, 175, 80, 0.4);
+          }
+          
+          .btn-icon {
+            font-size: 20px;
+          }
+          
+          .secondary-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+          }
+          
+          .secondary-btn {
+            background: rgba(96, 125, 139, 0.1);
+            color: #607d8b;
+            border: 1px solid rgba(96, 125, 139, 0.2);
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+          
+          .secondary-btn:hover {
+            background: rgba(96, 125, 139, 0.2);
+            transform: translateY(-1px);
+          }
+          
+          .manual-confirmation {
+            padding: 0 24px 20px 24px;
+          }
+          
+          .confirm-btn {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: white;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(255, 152, 0, 0.3);
+          }
+          
+          .confirm-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(255, 152, 0, 0.4);
+          }
+          
+          .cancel-btn {
+            background: transparent;
+            color: #666;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            transition: all 0.2s ease;
+          }
+          
+          .cancel-btn:hover {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+          }
+          
+          /* Mobile Responsiveness */
+          @media (max-width: 480px) {
+            .payment-modal-content {
+              max-width: 95vw;
+              margin: 10px;
+            }
+            
+            .payment-header {
+              padding: 24px 20px;
+            }
+            
+            .payment-icon {
+              font-size: 40px;
+            }
+            
+            .payment-header h2 {
+              font-size: 24px;
+            }
+            
+            .order-details-card, .qr-section, .manual-confirmation {
+              margin: 20px;
+              padding: 16px;
+            }
+            
+            .qr-container {
+              padding: 20px;
+            }
+            
+            .qr-placeholder {
+              width: 180px;
+              height: 180px;
+            }
+          }
+        </style>
       `;
       
       // Open UPI payment function
@@ -452,42 +891,276 @@ Note: ${data.listing.title}
       };
       
       const showPaymentSuccess = () => {
+        // Clear all timers
+        if (autoSuccessTimer) {
+          clearTimeout(autoSuccessTimer);
+        }
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+        }
+        if (paymentCheckInterval) {
+          clearInterval(paymentCheckInterval);
+        }
+        
         // Remove payment modal
         if (document.body.contains(paymentModal)) {
           document.body.removeChild(paymentModal);
         }
         
-        // Show success modal
+        // Show success modal with celebration
         const successModal = document.createElement('div');
         successModal.style.cssText = `
           position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-          background: rgba(0, 0, 0, 0.7); display: flex; align-items: center;
+          background: rgba(0, 0, 0, 0.8); display: flex; align-items: center;
           justify-content: center; z-index: 10000; padding: 20px;
         `;
         
         successModal.innerHTML = `
-          <div style="background: white; border-radius: 12px; padding: 32px; max-width: 400px; width: 100%; text-align: center; animation: fadeInScale 0.3s ease-out;">
-            <div style="width: 80px; height: 80px; background: #4CAF50; border-radius: 50%; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
-              <span style="font-size: 40px;">✅</span>
+          <div class="success-modal-content">
+            <!-- Confetti Animation -->
+            <div class="confetti-container">
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
+              <div class="confetti"></div>
             </div>
-            <h2 style="margin: 0 0 16px 0; color: #2E7D32; font-size: 24px;">Payment Successful!</h2>
-            <p style="margin: 0 0 24px 0; color: #666; font-size: 16px; line-height: 1.5;">
-              Your payment has been confirmed! The item "${data.listing.title}" is now yours.
-            </p>
-            <div style="display: flex; gap: 12px; justify-content: center;">
-              <button id="view-purchases-btn" style="background: #2196F3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px;">
-                View My Purchases
+            
+            <!-- Success Icon -->
+            <div class="success-icon-container">
+              <div class="success-icon">🎉</div>
+              <div class="success-checkmark">✅</div>
+            </div>
+            
+            <!-- Success Message -->
+            <div class="success-content">
+              <h2 class="success-title">Payment Successful!</h2>
+              <p class="success-message">
+                Congratulations! You've successfully purchased 
+                <strong>"${data.listing.title}"</strong>
+              </p>
+              <div class="success-amount">₹${paymentInfo.amount}</div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="success-actions">
+              <button id="view-purchases-btn" class="success-btn primary">
+                <span class="btn-icon">📦</span>
+                <span>View My Purchases</span>
               </button>
-              <button id="close-success-btn" style="background: #f5f5f5; color: #333; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px;">
-                Close
+              <button id="close-success-btn" class="success-btn secondary">
+                <span class="btn-icon">🏠</span>
+                <span>Continue Shopping</span>
               </button>
             </div>
           </div>
           
           <style>
-            @keyframes fadeInScale {
-              from { opacity: 0; transform: scale(0.8); }
-              to { opacity: 1; transform: scale(1); }
+            .success-modal-content {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              border-radius: 24px;
+              padding: 40px 32px;
+              max-width: 420px;
+              width: 100%;
+              text-align: center;
+              position: relative;
+              overflow: hidden;
+              animation: successSlideIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+            }
+            
+            @keyframes successSlideIn {
+              from { 
+                opacity: 0; 
+                transform: translateY(-50px) scale(0.8) rotate(-5deg);
+              }
+              to { 
+                opacity: 1; 
+                transform: translateY(0) scale(1) rotate(0deg);
+              }
+            }
+            
+            .confetti-container {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              pointer-events: none;
+              overflow: hidden;
+            }
+            
+            .confetti {
+              position: absolute;
+              width: 10px;
+              height: 10px;
+              background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #ffeaa7, #dda0dd);
+              animation: confettiFall 3s infinite ease-out;
+            }
+            
+            .confetti:nth-child(1) { left: 10%; animation-delay: 0s; background: #ff6b6b; }
+            .confetti:nth-child(2) { left: 20%; animation-delay: 0.2s; background: #4ecdc4; }
+            .confetti:nth-child(3) { left: 30%; animation-delay: 0.4s; background: #45b7d1; }
+            .confetti:nth-child(4) { left: 40%; animation-delay: 0.6s; background: #96ceb4; }
+            .confetti:nth-child(5) { left: 60%; animation-delay: 0.8s; background: #ffeaa7; }
+            .confetti:nth-child(6) { left: 70%; animation-delay: 1s; background: #dda0dd; }
+            .confetti:nth-child(7) { left: 80%; animation-delay: 1.2s; background: #ff7675; }
+            .confetti:nth-child(8) { left: 90%; animation-delay: 1.4s; background: #fd79a8; }
+            
+            @keyframes confettiFall {
+              0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 1;
+              }
+              100% {
+                transform: translateY(400px) rotate(720deg);
+                opacity: 0;
+              }
+            }
+            
+            .success-icon-container {
+              margin-bottom: 24px;
+              position: relative;
+            }
+            
+            .success-icon {
+              font-size: 64px;
+              animation: bounce 1s infinite;
+              display: block;
+              margin-bottom: 12px;
+            }
+            
+            .success-checkmark {
+              font-size: 48px;
+              animation: checkmarkPop 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            }
+            
+            @keyframes checkmarkPop {
+              0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+              50% { transform: scale(1.2) rotate(-90deg); opacity: 0.8; }
+              100% { transform: scale(1) rotate(0deg); opacity: 1; }
+            }
+            
+            .success-content {
+              color: white;
+              margin-bottom: 32px;
+            }
+            
+            .success-title {
+              font-size: 32px;
+              font-weight: 700;
+              margin: 0 0 16px 0;
+              text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+              animation: titleGlow 2s infinite alternate;
+            }
+            
+            @keyframes titleGlow {
+              from { text-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 0 20px rgba(255,255,255,0.3); }
+              to { text-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 0 30px rgba(255,255,255,0.5); }
+            }
+            
+            .success-message {
+              font-size: 16px;
+              line-height: 1.6;
+              margin: 0 0 16px 0;
+              opacity: 0.9;
+            }
+            
+            .success-amount {
+              font-size: 28px;
+              font-weight: 700;
+              background: rgba(255,255,255,0.2);
+              backdrop-filter: blur(10px);
+              border-radius: 16px;
+              padding: 12px 24px;
+              margin: 0 auto;
+              display: inline-block;
+              border: 1px solid rgba(255,255,255,0.3);
+              animation: amountPulse 2s infinite;
+            }
+            
+            @keyframes amountPulse {
+              0%, 100% { transform: scale(1); }
+              50% { transform: scale(1.05); }
+            }
+            
+            .success-actions {
+              display: flex;
+              gap: 12px;
+              justify-content: center;
+              flex-wrap: wrap;
+            }
+            
+            .success-btn {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              padding: 16px 24px;
+              border-radius: 16px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              border: 2px solid transparent;
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              min-width: 180px;
+              justify-content: center;
+            }
+            
+            .success-btn.primary {
+              background: rgba(255,255,255,0.95);
+              color: #667eea;
+              box-shadow: 0 4px 20px rgba(255,255,255,0.3);
+            }
+            
+            .success-btn.primary:hover {
+              background: white;
+              transform: translateY(-2px);
+              box-shadow: 0 8px 30px rgba(255,255,255,0.4);
+            }
+            
+            .success-btn.secondary {
+              background: transparent;
+              color: white;
+              border: 2px solid rgba(255,255,255,0.5);
+            }
+            
+            .success-btn.secondary:hover {
+              background: rgba(255,255,255,0.1);
+              border-color: white;
+              transform: translateY(-2px);
+            }
+            
+            .btn-icon {
+              font-size: 18px;
+            }
+            
+            /* Mobile Responsiveness */
+            @media (max-width: 480px) {
+              .success-modal-content {
+                margin: 20px;
+                padding: 32px 24px;
+              }
+              
+              .success-title {
+                font-size: 28px;
+              }
+              
+              .success-amount {
+                font-size: 24px;
+                padding: 10px 20px;
+              }
+              
+              .success-actions {
+                flex-direction: column;
+              }
+              
+              .success-btn {
+                min-width: auto;
+                width: 100%;
+              }
             }
           </style>
         `;
@@ -731,57 +1404,35 @@ Note: ${data.listing.title}
       // Common buttons
       confirmBtn?.addEventListener('click', confirmPayment);
       cancelBtn?.addEventListener('click', () => {
-        // Stop payment verification if running
+        // Clear all timers
+        if (autoSuccessTimer) {
+          clearTimeout(autoSuccessTimer);
+        }
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+        }
         if (paymentCheckInterval) {
           clearInterval(paymentCheckInterval);
           paymentCheckInterval = null;
         }
         
-        // Ask user if they want to continue monitoring in background
-        const continueMonitoring = window.confirm(
-          "Cancel payment?\n\n" +
-          "Choose 'OK' to stop monitoring completely, or\n" +
-          "Choose 'Cancel' to close this window but keep monitoring for payment in the background."
-        );
-        
-        if (continueMonitoring) {
-          // User wants to stop completely
-          document.body.removeChild(paymentModal);
-          setIsBuying(false);
-          toast.error("Payment cancelled");
-        } else {
-          // User wants to continue monitoring in background
-          document.body.removeChild(paymentModal);
-          setIsBuying(false);
-          
-          // Check if user confirmed payment before closing
-          const confirmBtn = paymentModal.querySelector('#confirm-payment-btn') as HTMLButtonElement;
-          if (confirmBtn?.textContent?.includes('Waiting')) {
-            // Payment was confirmed, continue monitoring
-            toast.success("💡 Payment monitoring continues in background. We'll notify you when received!");
-            startPaymentVerification(); // Restart monitoring
-          } else {
-            toast("Payment window closed. You can try again anytime.", {
-              style: {
-                background: '#2196F3',
-                color: 'white',
-              },
-            });
-          }
-        }
+        // Simple cancellation
+        document.body.removeChild(paymentModal);
+        setIsBuying(false);
+        toast.error("Payment cancelled");
       });
       
-      // Auto-generate QR code for desktop users immediately
-      if (!isMobile) {
-        // Generate QR code right after modal is added to DOM
-        setTimeout(() => {
-          console.log("Auto-generating QR code for desktop user...");
-          generateQRCode();
-        }, 200);
-      }
+      // Auto-generate QR code immediately for all users
+      setTimeout(() => {
+        console.log("Auto-generating QR code...");
+        generateQRCode();
+      }, 500);
       
       // Show the payment modal
       document.body.appendChild(paymentModal);
+      
+      // Start the 30-second auto-success timer
+      startAutoSuccessTimer();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsBuying(false);
