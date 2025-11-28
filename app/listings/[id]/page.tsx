@@ -219,63 +219,79 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         throw new Error(data.error || "Failed to create order");
       }
 
-      // Initialize Cashfree checkout
-      const cashfreeAppId = process.env.NEXT_PUBLIC_CASHFREE_APP_ID;
+      // Show UPI payment options
+      const paymentInfo = data.paymentInfo;
       
-      if (!cashfreeAppId) {
-        throw new Error("Cashfree app ID is not configured");
-      }
+      // Create payment modal content
+      const paymentModal = document.createElement('div');
+      paymentModal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+          <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
+            <h3 style="margin: 0 0 16px 0; color: #333;">Pay ₹${paymentInfo.amount}</h3>
+            <p style="margin: 0 0 16px 0; color: #666;">for ${data.listing.title}</p>
+            
+            <div style="margin: 20px 0;">
+              <p style="font-weight: bold; margin-bottom: 8px;">UPI ID: ${paymentInfo.merchantUpiId}</p>
+              <p style="font-size: 12px; color: #888;">Pay using any UPI app (PhonePe, Google Pay, Paytm, etc.)</p>
+            </div>
+            
+            <div style="margin: 20px 0;">
+              <button onclick="window.open('${paymentInfo.upiUrl}', '_blank')" 
+                style="background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
+                Pay with UPI App
+              </button>
+              
+              <button onclick="navigator.share ? navigator.share({text: '${paymentInfo.upiUrl}'}) : navigator.clipboard.writeText('${paymentInfo.upiUrl}').then(() => alert('UPI URL copied!'))"
+                style="background: #2196F3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
+                Copy UPI Link
+              </button>
+            </div>
+            
+            <div style="margin: 20px 0; border-top: 1px solid #eee; padding-top: 16px;">
+              <p style="font-size: 12px; color: #666; margin-bottom: 12px;">After payment, click confirm:</p>
+              <button id="confirmPaymentBtn" 
+                style="background: #FF9800; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px;">
+                I Have Made Payment
+              </button>
+            </div>
+            
+            <button onclick="document.body.removeChild(this.parentElement.parentElement)" 
+              style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+              Cancel
+            </button>
+          </div>
+        </div>
+      `;
+      
+      // Add event listener for confirm button
+      paymentModal.querySelector('#confirmPaymentBtn')?.addEventListener('click', async () => {
+        try {
+          const verifyResponse = await fetch("/api/orders/verify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              orderId: data.order.id,
+            }),
+          });
 
-      // Initialize Cashfree
-      const cashfree = (window as any).Cashfree({
-        mode: "production" // Use "sandbox" for testing
-      });
+          const verifyData = await verifyResponse.json();
 
-      const checkoutOptions = {
-        paymentSessionId: data.cashfreeOrder.payment_session_id,
-        redirectTarget: "_modal", // Opens in modal
-      };
-
-      // Handle payment result
-      const handlePaymentResult = async (result: any) => {
-        if (result.error) {
-          toast.error("Payment failed: " + result.error.message);
-          setIsBuying(false);
-          return;
-        }
-
-        if (result.redirect) {
-          // Payment successful - verify with backend
-          try {
-            const verifyResponse = await fetch("/api/orders/verify", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                orderId: data.order.id,
-                cashfreeOrderId: data.cashfreeOrder.order_id,
-              }),
-            });
-
-            const verifyData = await verifyResponse.json();
-
-            if (!verifyResponse.ok) {
-              throw new Error(verifyData.error || "Payment verification failed");
-            }
-
-            toast.success("Payment successful! 🎉");
-            router.push("/dashboard");
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Payment verification failed");
-          } finally {
-            setIsBuying(false);
+          if (!verifyResponse.ok) {
+            throw new Error(verifyData.error || "Payment verification failed");
           }
-        }
-      };
 
-      // Open Cashfree checkout
-      cashfree.checkout(checkoutOptions).then(handlePaymentResult);
+          toast.success("Payment submitted! Seller will verify and confirm. 📱");
+          document.body.removeChild(paymentModal);
+          router.push("/dashboard");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to submit payment");
+        }
+      });
+      
+      // Show the modal
+      document.body.appendChild(paymentModal);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsBuying(false);

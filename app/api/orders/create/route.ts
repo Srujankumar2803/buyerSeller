@@ -3,10 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 
-const CASHFREE_BASE_URL = "https://api.cashfree.com/pg";
-const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID!;
-const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY!;
-
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -60,44 +56,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate unique order ID for Cashfree
+    // Generate unique order ID 
     const orderId = `order_${Date.now()}_${session.user.id}`;
 
-    // Create Cashfree order payload
-    const cashfreeOrderData = {
-      order_id: orderId,
-      order_amount: listing.price,
-      order_currency: listing.currency,
-      customer_details: {
-        customer_id: session.user.id,
-        customer_name: session.user.name || "Customer",
-        customer_email: session.user.email,
-        customer_phone: "9999999999", // Default phone - you can collect this later
-      },
-      order_meta: {
-        return_url: `${process.env.NEXTAUTH_URL}/payment/success?order_id=${orderId}`,
-        notify_url: `${process.env.NEXTAUTH_URL}/api/cashfree/webhook`,
-      },
-      order_note: `Payment for ${listing.title}`,
-    };
-
-    // Create Cashfree order
-    const cashfreeResponse = await fetch(`${CASHFREE_BASE_URL}/orders`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-client-id": CASHFREE_APP_ID,
-        "x-client-secret": CASHFREE_SECRET_KEY,
-        "x-api-version": "2023-08-01",
-      },
-      body: JSON.stringify(cashfreeOrderData),
-    });
-
-    const cashfreeOrder = await cashfreeResponse.json();
-
-    if (!cashfreeResponse.ok) {
-      throw new Error(cashfreeOrder.message || "Failed to create Cashfree order");
-    }
+    // Your UPI ID where payments will be received
+    const merchantUpiId = process.env.MERCHANT_UPI_ID || "your-upi-id@paytm"; // Add this to .env
+    
+    // Generate UPI payment URL
+    const upiUrl = `upi://pay?pa=${merchantUpiId}&pn=Neighbourhood%20Marketplace&tr=${orderId}&am=${listing.price}&cu=${listing.currency}&tn=Payment%20for%20${encodeURIComponent(listing.title)}`;
+    
+    // Generate QR code data (same UPI URL)
+    const qrCodeData = upiUrl;
 
     // Save order to database
     const order = await prisma.order.create({
@@ -107,17 +76,20 @@ export async function POST(request: Request) {
         listingId: listing.id,
         amount: Math.round(listing.price * 100), // Store in paise for consistency
         currency: listing.currency,
-        status: "created",
-        razorpayOrderId: orderId, // Reusing this field for Cashfree order ID
+        status: "pending", // Pending UPI payment
+        razorpayOrderId: orderId, // Using this field for order ID
       },
     });
 
     return NextResponse.json({
       order,
-      cashfreeOrder: {
-        order_id: cashfreeOrder.order_id,
-        payment_session_id: cashfreeOrder.payment_session_id,
-        order_status: cashfreeOrder.order_status,
+      paymentInfo: {
+        orderId: orderId,
+        amount: listing.price,
+        currency: listing.currency,
+        upiUrl: upiUrl,
+        qrCodeData: qrCodeData,
+        merchantUpiId: merchantUpiId,
       },
       listing: {
         title: listing.title,
