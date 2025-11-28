@@ -281,16 +281,23 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             
             <!-- QR Code for Desktop Users -->
             ${!isMobile ? `
-            <div id="qr-container" style="margin: 16px 0; padding: 16px; background: #f8f9fa; border-radius: 8px; text-align: center;">
-              <p style="font-size: 14px; margin: 0 0 12px 0; font-weight: bold;">Scan QR Code with any UPI App:</p>
-              <div id="qr-code-placeholder" style="width: 200px; height: 200px; margin: 0 auto; background: white; border: 2px dashed #ddd; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666;">
-                QR Code will appear here
+            <div id="qr-container" style="margin: 16px 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; text-align: center; color: white;">
+              <p style="font-size: 16px; margin: 0 0 16px 0; font-weight: bold;">📱 Scan with UPI App</p>
+              <div id="qr-code-placeholder" style="width: 220px; height: 220px; margin: 0 auto 16px auto; background: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #666; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                <div style="text-align: center;">
+                  <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+                  <div>Generating QR Code...</div>
+                </div>
               </div>
-              <p style="font-size: 12px; margin: 12px 0 0 0; color: #666;">Or use UPI ID: <strong>${paymentInfo.merchantUpiId}</strong></p>
+              <p style="font-size: 14px; margin: 0; opacity: 0.9;">Amount: ₹${paymentInfo.amount} → ${paymentInfo.merchantUpiId}</p>
             </div>
             
+            <button id="regenerate-qr-btn" style="background: #9c27b0; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 8px; font-size: 14px;">
+              🔄 Regenerate QR Code
+            </button>
+            
             <button id="copy-upi-btn" style="background: #2196f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 12px;">
-              📋 Copy UPI ID & Amount
+              📋 Copy Payment Details
             </button>
             ` : ''}
           </div>
@@ -406,14 +413,50 @@ Note: ${data.listing.title}
       const generateQRCode = () => {
         const qrContainer = paymentModal.querySelector('#qr-code-placeholder');
         if (qrContainer) {
-          // Create QR code using QR.js (we'll use a simple approach)
-          const qrData = upiUrl;
+          console.log("Generating QR code...");
+          console.log("UPI URL for QR:", upiUrl);
+          
+          // Create QR code using multiple fallback methods
           const qrSize = 200;
+          const qrData = upiUrl;
           
-          // Use Google Charts API to generate QR code (free and works instantly)
-          const qrCodeUrl = `https://chart.googleapis.com/chart?chs=${qrSize}x${qrSize}&cht=qr&chl=${encodeURIComponent(qrData)}&choe=UTF-8`;
+          // Method 1: Google Charts API (most reliable)
+          const googleChartsUrl = `https://chart.googleapis.com/chart?chs=${qrSize}x${qrSize}&cht=qr&chl=${encodeURIComponent(qrData)}&choe=UTF-8`;
           
-          qrContainer.innerHTML = `<img src="${qrCodeUrl}" alt="UPI QR Code" style="width: 100%; height: 100%; object-fit: contain;" />`;
+          // Method 2: QR Server API (backup)
+          const qrServerUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(qrData)}`;
+          
+          // Create image element with error handling
+          const qrImage = document.createElement('img');
+          qrImage.style.cssText = 'width: 100%; height: 100%; object-fit: contain; border: 1px solid #ddd; border-radius: 8px;';
+          qrImage.alt = 'UPI QR Code';
+          
+          // Try Google Charts first
+          qrImage.src = googleChartsUrl;
+          
+          // Fallback to QR Server if Google Charts fails
+          qrImage.onerror = () => {
+            console.log("Google Charts failed, trying QR Server...");
+            qrImage.src = qrServerUrl;
+            
+            // Final fallback - show manual details
+            qrImage.onerror = () => {
+              console.log("All QR services failed, showing manual details");
+              qrContainer.innerHTML = `
+                <div style="padding: 20px; text-align: center; border: 2px dashed #ccc; border-radius: 8px;">
+                  <p style="margin: 0 0 8px 0; font-weight: bold;">QR Code unavailable</p>
+                  <p style="margin: 0; font-size: 12px; color: #666;">Use UPI ID manually</p>
+                </div>
+              `;
+            };
+          };
+          
+          qrImage.onload = () => {
+            console.log("QR code loaded successfully!");
+          };
+          
+          qrContainer.innerHTML = '';
+          qrContainer.appendChild(qrImage);
         }
       };
       
@@ -446,6 +489,7 @@ Note: ${data.listing.title}
       const paytmBtn = paymentModal.querySelector('#paytm-btn');
       const anyUpiBtn = paymentModal.querySelector('#any-upi-btn');
       const upiPaymentBtn = paymentModal.querySelector('#upi-payment-btn');
+      const regenerateQrBtn = paymentModal.querySelector('#regenerate-qr-btn');
       const copyUpiBtn = paymentModal.querySelector('#copy-upi-btn');
       const confirmBtn = paymentModal.querySelector('#confirm-payment-btn');
       const cancelBtn = paymentModal.querySelector('#cancel-payment-btn');
@@ -459,13 +503,29 @@ Note: ${data.listing.title}
       // Universal UPI payment button (works on both mobile and desktop)
       upiPaymentBtn?.addEventListener('click', makeUpiPayment);
       
+      // Regenerate QR code button
+      regenerateQrBtn?.addEventListener('click', () => {
+        const qrContainer = paymentModal.querySelector('#qr-code-placeholder');
+        if (qrContainer) {
+          qrContainer.innerHTML = `
+            <div style="text-align: center;">
+              <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
+              <div>Regenerating QR Code...</div>
+            </div>
+          `;
+          setTimeout(() => {
+            generateQRCode();
+          }, 500);
+        }
+      });
+      
       // Desktop copy UPI details button
       copyUpiBtn?.addEventListener('click', () => {
-        const paymentText = `UPI ID: ${paymentInfo.merchantUpiId}\nAmount: ₹${paymentInfo.amount}\nNote: ${data.listing.title}`;
+        const paymentText = `Pay ₹${paymentInfo.amount} to UPI ID: ${paymentInfo.merchantUpiId} (Note: ${data.listing.title})`;
         navigator.clipboard.writeText(paymentText).then(() => {
-          toast.success('Payment details copied! Open any UPI app to pay.');
+          toast.success('Payment details copied! 📋');
         }).catch(() => {
-          prompt('Copy payment details:', paymentText);
+          prompt('Copy these payment details:', paymentText);
         });
       });
       
@@ -476,11 +536,13 @@ Note: ${data.listing.title}
         setIsBuying(false);
       });
       
-      // Auto-generate QR code for desktop users
+      // Auto-generate QR code for desktop users immediately
       if (!isMobile) {
+        // Generate QR code right after modal is added to DOM
         setTimeout(() => {
+          console.log("Auto-generating QR code for desktop user...");
           generateQRCode();
-        }, 100);
+        }, 200);
       }
       
       // Show the payment modal
