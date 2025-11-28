@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
+
+const CASHFREE_BASE_URL = "https://api.cashfree.com/pg";
+const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID!;
+const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY!;
 
 export async function POST(request: Request) {
   try {
@@ -12,10 +15,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature } =
-      await request.json();
+    const { orderId, cashfreeOrderId } = await request.json();
 
-    if (!orderId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    if (!orderId || !cashfreeOrderId) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -39,42 +41,56 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify Razorpay signature
-    const generatedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET!)
-      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
-      .digest("hex");
+    // Verify payment status with Cashfree
+    const statusResponse = await fetch(`${CASHFREE_BASE_URL}/orders/${cashfreeOrderId}`, {
+      method: "GET",
+      headers: {
+        "x-client-id": CASHFREE_APP_ID,
+        "x-client-secret": CASHFREE_SECRET_KEY,
+        "x-api-version": "2023-08-01",
+      },
+    });
 
-    if (generatedSignature !== razorpaySignature) {
+    const paymentStatus = await statusResponse.json();
+
+    if (!statusResponse.ok) {
+      return NextResponse.json(
+        { error: "Failed to verify payment status" },
+        { status: 400 }
+      );
+    }
+
+    // Check payment status
+    if (paymentStatus.order_status === "PAID") {
+      // Payment is valid - update order
+      const updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: "paid",
+          razorpayPaymentId: paymentStatus.cf_order_id || cashfreeOrderId,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        order: updatedOrder,
+        message: "Payment verified successfully",
+      });
+    } else {
       // Update order status to failed
       await prisma.order.update({
         where: { id: orderId },
         data: {
           status: "failed",
-          razorpayPaymentId,
+          razorpayPaymentId: cashfreeOrderId,
         },
       });
 
       return NextResponse.json(
-        { error: "Invalid payment signature" },
+        { error: "Payment not completed" },
         { status: 400 }
       );
     }
-
-    // Payment is valid - update order
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: "paid",
-        razorpayPaymentId,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      order: updatedOrder,
-      message: "Payment verified successfully",
-    });
   } catch (error) {
     console.error("Error verifying payment:", error);
     return NextResponse.json(

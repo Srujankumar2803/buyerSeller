@@ -2,13 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import Razorpay from "razorpay";
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+const CASHFREE_BASE_URL = "https://api.cashfree.com/pg";
+const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID!;
+const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY!;
 
 export async function POST(request: Request) {
   try {
@@ -63,21 +60,44 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convert price to paise (INR smallest unit)
-    const amountInPaise = Math.round(listing.price * 100);
+    // Generate unique order ID for Cashfree
+    const orderId = `order_${Date.now()}_${session.user.id}`;
 
-    // Create Razorpay order
-    const razorpayOrder = await razorpay.orders.create({
-      amount: amountInPaise,
-      currency: listing.currency,
-      receipt: `order_${Date.now()}`,
-      notes: {
-        listingId: listing.id,
-        listingTitle: listing.title,
-        buyerId: session.user.id,
-        sellerId: listing.ownerId,
+    // Create Cashfree order payload
+    const cashfreeOrderData = {
+      order_id: orderId,
+      order_amount: listing.price,
+      order_currency: listing.currency,
+      customer_details: {
+        customer_id: session.user.id,
+        customer_name: session.user.name || "Customer",
+        customer_email: session.user.email,
+        customer_phone: "9999999999", // Default phone - you can collect this later
       },
+      order_meta: {
+        return_url: `${process.env.NEXTAUTH_URL}/payment/success?order_id=${orderId}`,
+        notify_url: `${process.env.NEXTAUTH_URL}/api/cashfree/webhook`,
+      },
+      order_note: `Payment for ${listing.title}`,
+    };
+
+    // Create Cashfree order
+    const cashfreeResponse = await fetch(`${CASHFREE_BASE_URL}/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-id": CASHFREE_APP_ID,
+        "x-client-secret": CASHFREE_SECRET_KEY,
+        "x-api-version": "2023-08-01",
+      },
+      body: JSON.stringify(cashfreeOrderData),
     });
+
+    const cashfreeOrder = await cashfreeResponse.json();
+
+    if (!cashfreeResponse.ok) {
+      throw new Error(cashfreeOrder.message || "Failed to create Cashfree order");
+    }
 
     // Save order to database
     const order = await prisma.order.create({
@@ -85,19 +105,19 @@ export async function POST(request: Request) {
         buyerId: session.user.id,
         sellerId: listing.ownerId,
         listingId: listing.id,
-        amount: amountInPaise,
+        amount: Math.round(listing.price * 100), // Store in paise for consistency
         currency: listing.currency,
         status: "created",
-        razorpayOrderId: razorpayOrder.id,
+        razorpayOrderId: orderId, // Reusing this field for Cashfree order ID
       },
     });
 
     return NextResponse.json({
       order,
-      razorpayOrder: {
-        id: razorpayOrder.id,
-        amount: razorpayOrder.amount,
-        currency: razorpayOrder.currency,
+      cashfreeOrder: {
+        order_id: cashfreeOrder.order_id,
+        payment_session_id: cashfreeOrder.payment_session_id,
+        order_status: cashfreeOrder.order_status,
       },
       listing: {
         title: listing.title,

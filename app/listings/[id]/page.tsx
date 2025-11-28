@@ -219,23 +219,34 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         throw new Error(data.error || "Failed to create order");
       }
 
-      // Initialize Razorpay checkout
-      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      // Initialize Cashfree checkout
+      const cashfreeAppId = process.env.NEXT_PUBLIC_CASHFREE_APP_ID;
       
-      if (!razorpayKey) {
-        throw new Error("Razorpay key is not configured");
+      if (!cashfreeAppId) {
+        throw new Error("Cashfree app ID is not configured");
       }
 
-      const options = {
-        key: razorpayKey,
-        amount: data.razorpayOrder.amount,
-        currency: data.razorpayOrder.currency,
-        name: "Neighbourhood Marketplace",
-        description: data.listing.title,
-        order_id: data.razorpayOrder.id,
-        handler: async function (response: any) {
+      // Initialize Cashfree
+      const cashfree = (window as any).Cashfree({
+        mode: "production" // Use "sandbox" for testing
+      });
+
+      const checkoutOptions = {
+        paymentSessionId: data.cashfreeOrder.payment_session_id,
+        redirectTarget: "_modal", // Opens in modal
+      };
+
+      // Handle payment result
+      const handlePaymentResult = async (result: any) => {
+        if (result.error) {
+          toast.error("Payment failed: " + result.error.message);
+          setIsBuying(false);
+          return;
+        }
+
+        if (result.redirect) {
+          // Payment successful - verify with backend
           try {
-            // Verify payment
             const verifyResponse = await fetch("/api/orders/verify", {
               method: "POST",
               headers: {
@@ -243,9 +254,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               },
               body: JSON.stringify({
                 orderId: data.order.id,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
+                cashfreeOrderId: data.cashfreeOrder.order_id,
               }),
             });
 
@@ -259,24 +268,14 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             router.push("/dashboard");
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "Payment verification failed");
-          }
-        },
-        prefill: {
-          name: session.user.name || "",
-          email: session.user.email || "",
-        },
-        theme: {
-          color: "#3B82F6",
-        },
-        modal: {
-          ondismiss: function () {
+          } finally {
             setIsBuying(false);
-          },
-        },
+          }
+        }
       };
 
-      const razorpay = new (window as any).Razorpay(options);
-      razorpay.open();
+      // Open Cashfree checkout
+      cashfree.checkout(checkoutOptions).then(handlePaymentResult);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsBuying(false);
